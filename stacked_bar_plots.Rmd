@@ -1,0 +1,1052 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+##Stacked_bar_plots
+
+
+
+```{r LoadingPackages, include=FALSE}
+library(phyloseq)
+library(vegan)
+library(DESeq2)
+library(dendextend) 
+library(viridis) 
+library(cowplot)
+library(gridExtra)
+library(ggpubr)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(RColorBrewer)
+pacman::p_load('knitr', 'tidyverse', 'knitr', 'magrittr', 'effects', 'devtools',
+               'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan",
+               "cowplot", "decontam","BiocManager", "dada2", "microbiome")
+```
+
+```{r load data}
+ps.rare<- readRDS("output/ps.rare.rds")
+```
+
+```{r phyla data}
+##PHYLA
+phyla_counts_tab <- otu_table(tax_glom(ps.rare, taxrank="Phylum")) 
+phyla_tax_vec <- as.vector(tax_table(tax_glom(ps.rare, taxrank="Phylum"))[,"Phylum"]) 
+colnames(phyla_counts_tab) <- as.vector(phyla_tax_vec)
+# making a relative abundance df at the phylum level 
+phylum_proportions <- apply(phyla_counts_tab, 1, function(x) x/sum(x))
+phylum_proportions <- as.data.frame(phylum_proportions) # making df
+phylum_proportions$Phyla <- row.names(phylum_proportions) # column of phyla
+# making data long - sample column, phyla column, relative abundance column 
+phylum_prop_long <- phylum_proportions %>% 
+  pivot_longer(cols = colnames(phylum_proportions[,1:83]), 
+               names_to = "id", 
+               values_to = "rel_abund")
+# ordering by sample ID 
+phylum_prop_long <- phylum_prop_long[order(phylum_prop_long$id),] 
+# now we have long df with each sample and the rel abundance of phyla
+
+```
+  
+```{r metadata}
+# manipulating metadata file: 
+metadata_final = data.frame (sample_data(ps.rare))
+class(metadata_final$mesocosm)
+mesocosm <- as.character(metadata_final$mesocosm)
+class(mesocosm)
+metadata_final$mesocosm <- mesocosm
+comp.metadata <- as.data.frame(metadata_final[, c("idzz", "location", "loc_type", "mesocosm")])
+
+# merging metadata with phyla df 
+phyla_comp <-  inner_join(phylum_prop_long, comp.metadata, by = "id")
+```
+
+
+```{r phyla comp, echo=TRUE}
+# basic figure of mean relative abundance for location
+phyla_location <- phyla_comp %>% 
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = 100*mean(rel_abund)) %>% 
+  ggplot(aes(x=location, y=mean_rel_abund, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_discrete(name = NULL) + 
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(10, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities by Site (Raw Data)")
+phyla_location
+ggsave("figures/mean_phyla_location_bar_raw.tiff", width = 14, height = 5)
+
+
+
+
+
+# making an "other" category and improving figure based on Pat Schloss suggestion
+
+# seeing maximum mean relative abundance of each phyla in above/below groups 
+phyla_mean_rel_abund <- phyla_comp %>% 
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = 100*mean(rel_abund))
+phyla_mean_rel_abund
+
+max.phyla <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(max(mean_rel_abund)) 
+max.phyla <- max.phyla[order(max.phyla$'max(mean_rel_abund)'), decreasing = TRUE]
+max.phyla
+
+
+# pooling everything over 5% using a logical 
+phyla_pool <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund) < 5, 
+            mean = mean(mean_rel_abund)) # this creates a logical of if a phyla meets the condition (is less than 5%)
+
+# join with df and plot! 
+phyla_comp_condensed <- inner_join(phyla_mean_rel_abund, phyla_pool, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = sum(mean_rel_abund),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=location, y=mean_rel_abund, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                    values = c(brewer.pal(12, "Set3"))) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities by Site (Phyla Relative Abundance >5%)")
+phyla_comp_condensed
+ggsave("figures/phyla_comp_condensed.tiff", height = 5, width = 12)
+
+```
+
+```{r phyla_location_2percent (top 10 phyla, above 2 percent)}
+####phyla_location_2percent (top 10 phyla)
+# pooling everything over 2% using a logical 
+phyla_pool_2 <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund) < 2, 
+            mean = mean(mean_rel_abund)) # this creates a logical of if a phyla meets the condition (is less than 2%)
+
+# join with df and plot! 
+phyla_location_2percent <- inner_join(phyla_mean_rel_abund, phyla_pool_2, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = sum(mean_rel_abund),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=location, y=mean_rel_abund, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                    values = c(brewer.pal(12, "Set3"))) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phyla Composition by Site (Relative Abundance > 2%")
+phyla_location_2percent
+ggsave("figures/phyla_location_2percent.tiff", height = 5, width = 12)
+```
+
+
+```{r phyla_loc_type }
+phyla_loc_type <- phyla_comp  %>% 
+  group_by(loc_type, Phyla) %>% 
+  summarize(mean_rel_abund_plt = 100*mean(rel_abund)) %>% 
+  ggplot(aes(x=loc_type, y=mean_rel_abund_plt, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_discrete(name = NULL) + 
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(10, "pt"))
+
+
+phyla_mean_rel_abund_loc_type <- phyla_comp %>% 
+  group_by(loc_type, Phyla) %>% 
+  summarize(mean_rel_abund_plt = 100*mean(rel_abund))
+
+max.phyla.loc_type <- phyla_mean_rel_abund_loc_type %>% 
+  group_by(Phyla) %>% 
+  summarize(max(mean_rel_abund_plt)) 
+max.phyla.loc_type <- max.phyla.loc_type[order(max.phyla.loc_type$'max(mean_rel_abund_plt)'), decreasing = FALSE]
+max.phyla.loc_type
+
+
+
+
+# pooling everything over 5% using a logical 
+phyla_pool_loc_type <- phyla_mean_rel_abund_loc_type %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean) < 5, 
+            mean = mean(mean_rel_abund_plt))
+
+# join with df and plot by site 
+phyla_comp_loc_type <- inner_join(phyla_mean_rel_abund_loc_type, phyla_pool_loc_type, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(loc_type, Phyla) %>% 
+  summarize(mean_rel_abund_plt = sum(mean_rel_abund_plt),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=loc_type, y=mean_rel_abund_plt, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                   breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                   values = c(brewer.pal(11, "Set3"), "gray")) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities by 
+          Habitat Type")
+phyla_comp_loc_type
+ggsave("figures/phyla_comp_loc_type.tiff", width = 6, height = 6)
+
+
+
+
+
+### TOP 10 PHYLA - 2 PERCENT
+phyla_pool_loc_type_2 <- phyla_mean_rel_abund_loc_type %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund_plt) < 2, 
+            mean = mean(mean_rel_abund_plt))
+phyla_comp_loc_type_2_2 <- inner_join(phyla_mean_rel_abund_loc_type, phyla_pool_loc_type_2, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(loc_type, Phyla) %>% 
+  summarize(mean_rel_abund_plt = sum(mean_rel_abund_plt),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=loc_type, y=mean_rel_abund_plt, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                   breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                   values = c(brewer.pal(11, "Set3"), "gray")) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities 
+          by Habitat Type (>2%)")
+phyla_comp_loc_type_2_2
+ggsave("figures/phyla_comp_loc_type_2_2.tiff", width = 6, height = 6)
+
+## check phyla_pool_loc_type_2 --> Verrucomicrobiota pool TRUE when should be FALSE?
+```
+
+
+```{r CLASS}
+
+##CLASS
+class_counts_tab <- otu_table(tax_glom(ps.rare, taxrank="Class"))
+class_tax_vec <- as.vector(tax_table(tax_glom(ps.rare, taxrank="Class"))[,"Class"]) 
+colnames(class_counts_tab) <- as.vector(class_tax_vec)
+class_proportions <- apply(class_counts_tab, 1, function(x) x/sum(x))
+class_proportions <- as.data.frame(class_proportions) # making df
+class_proportions$Class <- row.names(class_proportions)
+class_prop_long <- class_proportions %>% 
+  pivot_longer(cols = colnames(class_proportions[,1:83]), 
+               names_to = "id", 
+               values_to = "rel_abund_class")
+# ordering by sample ID 
+class_prop_long <- class_prop_long[order(class_prop_long$id),] 
+
+metadata_final = data.frame (sample_data(ps.rare))
+comp.metadata <- as.data.frame(metadata_final[, c("id", "location", "loc_type", "mesocosm")])
+# merging metadata with class df 
+class_comp <-  inner_join(class_prop_long, comp.metadata, by = "id")
+
+
+
+class_location_raw <- class_comp %>% 
+  group_by(location, Class) %>% 
+  summarize(mean_rel_abund_class = 100*mean(rel_abund_class)) %>% 
+  ggplot(aes(x=location, y=mean_rel_abund_class, fill=Class)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_discrete(name = NULL) + 
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(10, "pt"))
+class_location_raw
+ggsave("figures/class_location_raw.tiff", width = 15, height = 5)
+
+
+
+# making an "other" category and improving figure based on Pat Schloss suggestion
+
+# seeing maximum mean relative abundance of each phyla in above/below groups 
+class_mean_rel_abund <- class_comp %>% 
+  group_by(location, Class) %>% 
+  summarize(mean_rel_abund_class = 100*mean(rel_abund_class))
+class_mean_rel_abund
+
+max.class <- class_mean_rel_abund %>% 
+  group_by(Class) %>% 
+  summarize(max(mean_rel_abund_class)) 
+max.class <- max.class[order(max.class$'max(mean_rel_abund_class)'), decreasing = FALSE]
+view(max.class)
+
+# pooling everything over 5% using a logical 
+class_pool <- class_mean_rel_abund %>% 
+  group_by(Class) %>% 
+  summarize(pool = max(mean_rel_abund_class) < 5, 
+            mean = mean(mean_rel_abund_class)) # this creates a logical of if a phyla meets the condition (is less than 5%)
+
+# join with df and plot! 
+class_comp_condensed <- inner_join(class_mean_rel_abund, class_pool, by = "Class") %>% 
+  mutate(Class = if_else(pool, "Other", Class)) %>%
+  group_by(location, Class) %>% 
+  summarize(mean_rel_abund_class = sum(mean_rel_abund_class),
+            mean = sum(mean)) %>% 
+  mutate(Class = factor(Class), 
+         Class = fct_reorder(Class, mean, .desc = TRUE), 
+         Class = fct_shift(Class, n=1)) %>%
+  ggplot(aes(x=location, y=mean_rel_abund_class, fill=Class)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Clostridia", "Bacilli", "Fusobacteriia", "Gammaproteobacteria", "Cyanobacteriia", "Alphaproteobacteria", "Actinobacteria", "Brevinematia", "Bacteroidia", "Planctomycetes"), 
+                    values = c(brewer.pal(12, "Set3"))) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Class Composition of Bacterial Communities by Site")
+class_comp_condensed
+ggsave("figures/class_comp_condensed.tiff", height = 5, width = 12)
+
+
+```
+
+
+
+```{r phyla composition by location type for experimental mesocosms}
+exp <- comp.metadata[comp.metadata$location %in% c('Experiment'),]
+exp
+
+phyla_comp_exp <-  inner_join(phylum_prop_long, exp, by = "id")
+
+
+phyla_loc_type_exp <- phyla_comp_exp  %>% 
+  group_by(loc_type, Phyla) %>% 
+  summarize(mean_rel_abund_plt = 100*mean(rel_abund)) %>% 
+  ggplot(aes(x=loc_type, y=mean_rel_abund_plt, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_discrete(name = NULL) + 
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(10, "pt"))
+
+phyla_mean_rel_abund_loc_type_exp <- phyla_comp_exp %>% 
+  group_by(loc_type, Phyla) %>% 
+  summarize(mean_rel_abund_plt = 100*mean(rel_abund))
+
+max.phyla.loc_type_exp <- phyla_mean_rel_abund_loc_type_exp %>% 
+  group_by(Phyla) %>% 
+  summarize(max(mean_rel_abund_plt)) 
+max.phyla.loc_type_exp <- max.phyla.loc_type_exp[order(max.phyla.loc_type_exp$'max(mean_rel_abund_plt)'), decreasing = FALSE]
+max.phyla.loc_type_exp
+
+# pooling everything over 5% using a logical 
+phyla_pool_loc_type_exp <- phyla_mean_rel_abund_loc_type_exp %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund_plt) < 5, 
+            mean = mean(mean_rel_abund_plt))
+
+# join with df and plot by site 
+LT_exp <- inner_join(phyla_mean_rel_abund_loc_type_exp, phyla_pool_loc_type_exp, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(loc_type, Phyla) %>% 
+  summarize(mean_rel_abund_plt = sum(mean_rel_abund_plt),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=loc_type, y=mean_rel_abund_plt, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                   breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                   values = c(brewer.pal(11, "Set3"), "gray")) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities of 
+          Experimental Lake/Stream Mesocosms")
+LT_exp
+ggsave("figures/LT_exp.tiff", width = 6, height = 6)
+```
+
+```{r phyla comp by loc type for sample sites}
+notexp <- comp.metadata[comp.metadata$location %in% c('Layton Springs', 'Twin Lakes', 'June Lake', 'Hot Creek', 'Twin Lakes BP', 'McNally Canal', 'Warm Lake', 'Crowley Lake', 'Owens River', 'Mammoth Creek', 'Layton Springs ', 'Twin Lakes '),]
+notexp
+
+phyla_comp_notexp <-  inner_join(phylum_prop_long, notexp, by = "id")
+
+
+phyla_loc_type_notexp <- phyla_comp_notexp  %>% 
+  group_by(loc_type, Phyla) %>% 
+  summarize(mean_rel_abund_plt = 100*mean(rel_abund)) %>% 
+  ggplot(aes(x=loc_type, y=mean_rel_abund_plt, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_discrete(name = NULL) + 
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(10, "pt"))
+
+phyla_mean_rel_abund_loc_type_notexp <- phyla_comp_notexp %>% 
+  group_by(loc_type, Phyla) %>% 
+  summarize(mean_rel_abund_plt = 100*mean(rel_abund))
+
+max.phyla.loc_type_notexp <- phyla_mean_rel_abund_loc_type_notexp %>% 
+  group_by(Phyla) %>% 
+  summarize(max(mean_rel_abund_plt)) 
+max.phyla.loc_type_notexp <- max.phyla.loc_type_notexp[order(max.phyla.loc_type_notexp$'max(mean_rel_abund_plt)'), decreasing = FALSE]
+max.phyla.loc_type_notexp
+
+# pooling everything over 5% using a logical 
+phyla_pool_loc_type_notexp <- phyla_mean_rel_abund_loc_type_notexp %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund_plt) < 5, 
+            mean = mean(mean_rel_abund_plt))
+
+# join with df and plot by site 
+LT_notexp <- inner_join(phyla_mean_rel_abund_loc_type_notexp, phyla_pool_loc_typenotexp, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(loc_type, Phyla) %>% 
+  summarize(mean_rel_abund_plt = sum(mean_rel_abund_plt),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=loc_type, y=mean_rel_abund_plt, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                   breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                   values = c(brewer.pal(11, "Set3"), "gray")) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities by 
+          Habitat Type (excluding mesocosms)")
+LT_notexp
+ggsave("figures/LT_notexp.tiff", width = 6, height = 6)
+```
+
+
+
+```{r lake_exp}
+
+exp <- comp.metadata[comp.metadata$location %in% c('Experiment'),]
+lake_exp <- exp[exp$loc_type %in% c('lake'),]
+lake_exp
+
+mesocosms <- factor(lake_exp$mesocosm, levels=c(1, 2,6,7,8,9,10,11,12,13,18))
+
+R> mesocosms
+
+
+phyla_comp_lake <-  inner_join(phylum_prop_long, lake_exp, by = "id")
+
+
+phyla_mean_rel_abund <- phyla_comp_lake %>% 
+  group_by(mesocosm, Phyla) %>% 
+  summarize(mean_rel_abund = 100*mean(rel_abund))
+phyla_mean_rel_abund
+
+max.phyla_lake <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(max(mean_rel_abund)) 
+max.phyla_lake <- max.phyla_lake[order(max.phyla_lake$'max(mean_rel_abund)'), decreasing = TRUE]
+max.phyla_lake
+
+
+# pooling everything over 5% using a logical 
+phyla_pool_lake <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund) < 5, 
+            mean = mean(mean_rel_abund)) # this creates a logical of if a phyla meets the condition (is less than 5%)
+
+# join with df and plot! 
+phyla_comp_lake <- inner_join(phyla_mean_rel_abund, phyla_pool_lake, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(mesocosm, Phyla) %>% 
+  summarize(mean_rel_abund = sum(mean_rel_abund),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=mesocosm, y=mean_rel_abund, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                    values = c(brewer.pal(12, "Set3"))) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  scale_x_discrete(limits = c("1","2","6","7","8","9","10","11","12","13","18")) +
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Lake Bacterial Communities by Mesocosm")
+phyla_comp_lake
+ggsave("figures/phyla_comp_lake_exp.tiff", height = 5, width = 12)
+
+
+
+phyla_comp_lake2 <- inner_join(phyla_pool_lake, phyla_mean_rel_abund, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(mesocosm, Phyla) %>% 
+  summarize(mean_rel_abund = sum(mean_rel_abund),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=mesocosm, y=mean_rel_abund, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                    values = c(brewer.pal(12, "Set3"))) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Lake Bacterial Communities by Mesocosm")
+phyla_comp_lake2
+ggsave("figures/phyla_comp_lake_exp2.tiff", height = 5, width = 12)
+
+```
+
+```{r lake sites}
+notexp <- comp.metadata[comp.metadata$location %in% c('Layton Springs', 'Twin Lakes', 'June Lake', 'Hot Creek', 'Twin Lakes BP', 'McNally Canal', 'Warm Lake', 'Crowley Lake', 'Owens River', 'Mammoth Creek', 'Layton Springs ', 'Twin Lakes '),]
+notexp
+
+lne <- notexp[notexp$loc_type %in% c('lake'),]
+lne
+
+phyla_comp_lne <-  inner_join(phylum_prop_long, lne, by = "id")
+
+# seeing maximum mean relative abundance of each phyla in above/below groups 
+phyla_mean_rel_abund <- phyla_comp_lne %>% 
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = 100*mean(rel_abund))
+phyla_mean_rel_abund
+
+max.phyla <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(max(mean_rel_abund)) 
+max.phyla <- max.phyla[order(max.phyla$'max(mean_rel_abund)'), decreasing = TRUE]
+max.phyla
+
+
+# pooling everything over 5% using a logical 
+phyla_pool <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund) < 5, 
+            mean = mean(mean_rel_abund)) # this creates a logical of if a phyla meets the condition (is less than 5%)
+
+# join with df and plot! 
+phyla_comp_lne <- inner_join(phyla_mean_rel_abund, phyla_pool, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = sum(mean_rel_abund),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=location, y=mean_rel_abund, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                    values = c(brewer.pal(12, "Set3"))) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Lake Bacterial Communities by Site")
+phyla_comp_lne
+ggsave("figures/phyla_comp_lne.tiff", height = 6, width = 8)
+
+```
+
+```{r stream_exp}
+exp <- comp.metadata[comp.metadata$location %in% c('Experiment'),]
+stream_exp <- exp[exp$loc_type %in% c('stream'),]
+stream_exp
+
+
+phyla_comp_stream <-  inner_join(phylum_prop_long, stream_exp, by = "id")
+
+
+phyla_mean_rel_abund <- phyla_comp_stream %>% 
+  group_by(mesocosm, Phyla) %>% 
+  summarize(mean_rel_abund = 100*mean(rel_abund))
+phyla_mean_rel_abund
+
+max.phyla_stream <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(max(mean_rel_abund)) 
+max.phyla_stream <- max.phyla_stream[order(max.phyla_stream$'max(mean_rel_abund)'), decreasing = TRUE]
+max.phyla_stream
+
+
+# pooling everything over 5% using a logical 
+phyla_pool_stream <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund) < 5, 
+            mean = mean(mean_rel_abund)) # this creates a logical of if a phyla meets the condition (is less than 5%)
+
+# join with df and plot! 
+phyla_comp_stream <- inner_join(phyla_mean_rel_abund, phyla_pool_stream, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(mesocosm, Phyla) %>% 
+  summarize(mean_rel_abund = sum(mean_rel_abund),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=mesocosm, y=mean_rel_abund, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                    values = c(brewer.pal(12, "Set3"))) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  scale_x_discrete(limits = c("2","3","5","6","7","11","12","14","16")) +
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Stream Bacterial Communities by Mesocosm")
+phyla_comp_stream
+ggsave("figures/phyla_comp_stream_exp.tiff", height = 5, width = 12)
+
+```
+
+```{r stream sites}
+notexp <- comp.metadata[comp.metadata$location %in% c('Layton Springs', 'Twin Lakes', 'June Lake', 'Hot Creek', 'Twin Lakes BP', 'McNally Canal', 'Warm Lake', 'Crowley Lake', 'Owens River', 'Mammoth Creek', 'Layton Springs ', 'Twin Lakes '),]
+notexp
+
+sne <- notexp[notexp$loc_type %in% c('stream'),]
+sne
+
+phyla_comp_sne <-  inner_join(phylum_prop_long, sne, by = "id")
+
+# seeing maximum mean relative abundance of each phyla in above/below groups 
+phyla_mean_rel_abund <- phyla_comp_sne %>% 
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = 100*mean(rel_abund))
+phyla_mean_rel_abund
+
+max.phyla <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(max(mean_rel_abund)) 
+max.phyla <- max.phyla[order(max.phyla$'max(mean_rel_abund)'), decreasing = TRUE]
+max.phyla
+
+
+# pooling everything over 5% using a logical 
+phyla_pool <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund) < 5, 
+            mean = mean(mean_rel_abund)) # this creates a logical of if a phyla meets the condition (is less than 5%)
+
+# join with df and plot! 
+phyla_sne <- inner_join(phyla_mean_rel_abund, phyla_pool, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = sum(mean_rel_abund),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=location, y=mean_rel_abund, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                    values = c(brewer.pal(12, "Set3"))) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Stream Bacterial Communities by Site")
+phyla_sne
+ggsave("figures/phyla_comp_sne.tiff", height = 6, width = 8)
+```
+
+
+
+
+
+```{r ps.fin (not rarified data)}
+
+ps.fin<- readRDS("output/ps.fin.rds")
+
+phyla_counts_tab_fin <- otu_table(tax_glom(ps.fin, taxrank="Phylum")) 
+phyla_tax_vec_fin <- as.vector(t(tax_table(tax_glom(ps.fin, taxrank="Phylum"))[,"Phylum"])) 
+colnames(phyla_counts_tab_fin) <- as.vector(phyla_tax_vec_fin)
+# making a relative abundance df at the phylum level 
+phylum_proportions_fin <- apply(phyla_counts_tab_fin, 1, function(x) x/sum(x))
+phylum_proportions_fin <- as.data.frame(phylum_proportions_fin) # making df
+phylum_proportions_fin$Phyla <- row.names(phylum_proportions_fin) # column of phyla
+# making data long - sample column, phyla column, relative abundance column 
+phylum_prop_long_fin <- phylum_proportions_fin %>% 
+  pivot_longer(cols = colnames(phylum_proportions_fin[,1:144]), 
+               names_to = "id", 
+               values_to = "rel_abund_fin")
+# ordering by sample ID 
+phylum_prop_long_fin <- phylum_prop_long_fin[order(phylum_prop_long_fin$id),] 
+# now we have long df with each sample and the rel abundance of phyla
+
+
+metadata_final_fin = data.frame (sample_data(ps.fin))
+comp.metadata_fin <- as.data.frame(metadata_final_fin[, c("id", "location", "loc_type", "mesocosm")])
+
+# merging metadata with phyla df 
+phyla_comp_fin <-  inner_join(phylum_prop_long_fin, comp.metadata_fin, by = "id")
+
+
+
+
+# basic figure of mean relative abundance for location
+phyla_location_fin <- phyla_comp_fin %>% 
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund_fin = 100*mean(rel_abund_fin)) %>% 
+  ggplot(aes(x=location, y=mean_rel_abund_fin, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_discrete(name = NULL) + 
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(10, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities by Site (Raw Data, not rarified)")
+phyla_location_fin
+ggsave("figures/mean_phyla_location_bar_raw_fin.tiff", width = 14, height = 7)
+
+
+
+
+
+# making an "other" category and improving figure based on Pat Schloss suggestion
+
+# seeing maximum mean relative abundance of each phyla in above/below groups 
+phyla_mean_rel_abund_fin <- phyla_comp_fin %>% 
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund_fin = 100*mean(rel_abund_fin))
+phyla_mean_rel_abund_fin
+
+max.phyla_fin <- phyla_mean_rel_abund_fin %>% 
+  group_by(Phyla) %>% 
+  summarize(max(mean_rel_abund_fin)) 
+max.phyla_fin <- max.phyla_fin[order(max.phyla_fin$'max(mean_rel_abund_fin)'), decreasing = TRUE]
+max.phyla_fin
+
+
+# pooling everything over 5% using a logical 
+phyla_pool_fin <- phyla_mean_rel_abund_fin %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund_fin) < 5, 
+            mean = mean(mean_rel_abund_fin)) # this creates a logical of if a phyla meets the condition (is less than 5%)
+
+# join with df and plot! 
+phyla_comp_condensed_fin <- inner_join(phyla_pool_fin, phyla_mean_rel_abund_fin, by = "Phyla") %>% 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund_fin = sum(mean_rel_abund_fin),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=location, y=mean_rel_abund_fin, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                    values = c(brewer.pal(12, "Set3"))) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities by Site (data not rarified)")
+phyla_comp_condensed_fin
+ggsave("figures/phyla_comp_condensed_fin.tiff", height = 5, width = 12)
+
+
+
+
+
+
+
+
+## CLASS
+class_counts_tab_fin <- otu_table(tax_glom(ps.fin, taxrank="Class"))
+class_tax_vec_fin <- as.vector(tax_table(tax_glom(ps.fin, taxrank="Class"))[,"Class"]) 
+colnames(class_counts_tab_fin) <- as.vector(class_tax_vec_fin)
+
+
+```
+
+
+
+
+###LMB_tui
+```{r stacked bar phylum}
+# merge all to phylum level
+
+ps.rare_phylum <- ps.rare %>%
+  tax_glom(taxrank = "Phylum") %>%                     # agglomerate at phylum level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% # Transform to rel. abundance
+  psmelt() %>%                                         # Melt to long format
+  filter(Abundance > 0.02) %>%                         # Filter out low abundance taxa
+  arrange(Phylum) 
+  
+
+phylum_colors<-col_vector
+
+# Plot 
+Bac.Phyla.stacked.bar<-
+  ggplot(ps.rare_phylum, aes(x = location, y = Abundance, fill = Phylum)) + 
+  #facet_grid(site~.) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = phylum_colors) +
+  guides(fill = guide_legend(reverse = TRUE, keywidth = 1, keyheight = 1)) +
+  ylab("Relative Abundance (Phyla > 2%) \n") +
+  xlab("Site")+
+  ggtitle("Phylum Composition of Bacterial Communities by Site") +
+  theme(axis.text.x=element_text(angle = 30))
+
+
+Bac.Phyla.stacked.bar
+ggsave(filename = "figures/Bac.Phyla.stacked.bar.pdf", plot = Bac.Phyla.stacked.bar, height=5.5, width=10)
+dev.copy(pdf, "figures/Bac.Phyla.stacked.bar.pdf", height=5.5, width=10)
+dev.off() 
+
+
+
+
+
+ps.rare_phylum1 <- ps.rare %>%
+  tax_glom(taxrank = "Phylum") %>%                     # agglomerate at phylum level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% # Transform to rel. abundance
+  psmelt() %>%                                         # Melt to long format
+  arrange(Phylum) 
+
+
+Bac.Phyla.stacked.bar1<-
+  ggplot(ps.rare_phylum1, aes(x = location, y = Abundance, fill = Phylum)) +
+  #facet_grid(site~.) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = phylum_colors) +
+  guides(fill = guide_legend(reverse = TRUE, keywidth = 1, keyheight = 1)) +
+  ylab("Relative Abundance") +
+  xlab("Site")+
+  ggtitle("Phylum Composition of Bacterial Communities by Site") +
+  theme(axis.text.x=element_text(angle = 30))
+
+
+Bac.Phyla.stacked.bar1
+ggsave(filename = "figures/Bac.Phyla.stacked.bar1.pdf", plot = Bac.Phyla.stacked.bar1, height=5.5, width=10)
+```
+
+```{r stacked bar phylum 2}
+
+data[data$phylum %in% remainder,]$Phylum <- "Phyla < 1% abund."
+#rename phyla with < 1% relative abundance
+data$phylum[data$Abundance < 0.01] <- "Phyla < 1% abund."
+
+#plot with condensed phyla into "< 1% abund" category
+p <- ggplot(data=data, aes(x=Sample, y=Abundance, fill=phylum))
+p + geom_bar(aes(), stat="identity", position="stack") +
+scale_fill_manual(values = c("darkblue", "darkgoldenrod1", "darkseagreen", "darkorchid", "darkolivegreen1", "lightskyblue", "darkgreen", "deeppink", "khaki2", "firebrick", "brown1", "darkorange1", "cyan1", "royalblue4", "darksalmon", "darkblue",
+"royalblue4", "dodgerblue3", "steelblue1", "lightskyblue", "darkseagreen", "darkgoldenrod1", "darkseagreen", "darkorchid", "darkolivegreen1", "brown1", "darkorange1", "cyan1", "darkgrey")) +
+theme(legend.position="bottom") + guides(fill=guide_legend(nrow=5))
+
+
+
+
+```
+
+```{r class stacked bar}
+# merge all to phylum level
+
+ps.rare_class1 <- ps.rare %>%
+  tax_glom(taxrank = "Class") %>%                     
+  # agglomerate at class level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% 
+  # Transform to rel. abundance
+  psmelt() %>%                                         
+  # Melt to long format
+  filter(Abundance > 0.02) %>%                         
+  # Filter out low abundance taxa
+  arrange(Class) 
+
+class_colors<-col_vector
+
+# Plot 
+Bac.class.stacked.bar<-
+  ggplot(ps.rare_class1, aes(x = location, y = Abundance, fill = Class)) + 
+  #facet_grid(site~.) +
+  geom_bar(stat = "identity")+
+  scale_fill_manual(values = class_colors) +
+  guides(fill = guide_legend(reverse = TRUE, keywidth = 1, keyheight = 1)) +
+  ylab("Relative Abundance (Class > 2%) \n") +
+  xlab("Site") +
+  ggtitle("Class Composition of Bacterial Communities by Site") +
+  theme(axis.text.x=element_text(angle = 30))   # X axis text
+
+
+Bac.class.stacked.bar
+ggsave(filename = "figures/Bac.class.stacked.bar.pdf", plot = Bac.class.stacked.bar, height=5.5, width=10)
+dev.copy(pdf, filename = "figures/Bac.class.stacked.bar.pdf", height=5.5, width=10)
+dev.off() 
+
+
+
+plot_bar(ps.rare_phylum, fill="Phylum")
+
+
+plot_bar(ps.rare_phylum, x="location", fill="Phylum") + geom_bar(aes(color=Phylum, fill=Phylum), stat="identity", position="stack")
+
+```
+
+```{r loc_type stacked bar}
+ps.rare_phy.loc.type <- ps.rare %>%
+  tax_glom(taxrank = "Phylum") %>%                     
+  # agglomerate at class level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% 
+  # Transform to rel. abundance
+  psmelt() %>%                                         
+  # Melt to long format
+  filter(Abundance > 0.02) %>%                         
+  # Filter out low abundance taxa
+  arrange(Phylum) 
+
+phyla_colors<-col_vector
+
+# Plot 
+Bac.phy.loc.type.stacked.bar<-
+  ggplot(ps.rare_phy.loc.type, aes(x = loc_type, y = Abundance, fill = Phylum)) + 
+  #facet_grid(site~.) +
+  geom_bar(stat = "identity")+
+  scale_fill_manual(values = phyla_colors) +
+  guides(fill = guide_legend(reverse = TRUE, keywidth = 1, keyheight = 1)) +
+  ylab("Relative Abundance (Phyla > 2%) \n") +
+  xlab("Location Type") +
+  ggtitle("Class Composition of Bacterial Communities by Location Type") +
+  theme(axis.text.x=element_text(angle = 30))   # X axis text
+
+
+Bac.phy.loc.type.stacked.bar
+ggsave(filename = "figures/Bac.phy.loc.type.stacked.bar.pdf", plot = Bac.phy.loc.type.stacked.bar, height=8, width=6)
+
+
+
+
+
+ps.rare_class.loc.type <- ps.rare %>%
+  tax_glom(taxrank = "Class") %>%                     
+  # agglomerate at class level
+  psmelt() %>%                                         
+  # Melt to long format
+  filter(Abundance > 0.02) %>%                         
+  # Filter out low abundance taxa
+   transform_sample_counts(function(x) {x/sum(x)} ) %>% 
+  # Transform to rel. abundance
+  arrange(Class) 
+
+class_colors<-col_vector
+
+# Plot 
+Bac.class.loc.type.stacked.bar<-
+  ggplot(ps.rare_class.loc.type, aes(x = loc_type, y = Abundance, fill = Class)) + 
+  #facet_grid(site~.) +
+  geom_bar(stat = "identity")+
+  scale_fill_manual(values = class_colors) +
+  guides(fill = guide_legend(reverse = TRUE, keywidth = 1, keyheight = 1)) +
+  ylab("Relative Abundance (Class > 2%) \n") +
+  xlab("Location Type") +
+  ggtitle("Class Composition of Bacterial Communities by Location Type") +
+  theme(axis.text.x=element_text(angle = 30))   # X axis text
+
+
+Bac.class.loc.type.stacked.bar
+ggsave(filename = "figures/Bac.class.loc.type.stack.bar.pdf", plot = Bac.class.loc.type.stacked.bar, height=8, width=6)
+```
+
+```{r experiment stacked bar}
+ps.rare_phy.exp.st <- ps.rare %>%
+  tax_glom(taxrank = "Phylum") %>%                     
+  # agglomerate at class level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% 
+  # Transform to rel. abundance
+  psmelt() %>%                                         
+  # Melt to long format
+  filter(Abundance > 0.02) %>%                         
+  # Filter out low abundance taxa
+  arrange(Phylum) 
+
+phylum_colors<-col_vector
+
+# Plot 
+Bac.phy.exp.st.stacked.bar<-
+  ggplot(ps.rare_phy.exp.st, aes(x = mesocosm, y = Abundance, fill = )) + 
+  #facet_grid(site~.) +
+  geom_bar(stat = "identity")+
+  scale_fill_manual(values = phylum_colors) +
+  guides(fill = guide_legend(reverse = TRUE, keywidth = 1, keyheight = 1)) +
+  ylab("Relative Abundance (Phyla > 2%) \n") +
+  xlab("Stream Mesocosms") +
+  ggtitle("Class Composition of Lake \n Bacterial Communities by Stream Mesocosm") +
+  theme(axis.text.x=element_text(angle = 30))   # X axis text
+
+
+Bac.phy.exp.st.stacked.bar
+ggsave(filename = "figures/Bac.phy.exp.st.stacked.bar.pdf", plot = Bac.phy.exp.st.stacked.bar, height=8, width=6)
+
+
+
+
+
+ps.rare_class.loc.type <- ps.rare %>%
+  tax_glom(taxrank = "Class") %>%                     
+  # agglomerate at class level
+  transform_sample_counts(function(x) {x/sum(x)} ) %>% 
+  # Transform to rel. abundance
+  psmelt() %>%                                         
+  # Melt to long format
+  filter(Abundance > 0.02) %>%                         
+  # Filter out low abundance taxa
+  arrange(Class) 
+
+class_colors<-col_vector
+
+# Plot 
+Bac.class.loc.type.stacked.bar<-
+  ggplot(ps.rare_class.loc.type, aes(x = loc_type, y = Abundance, fill = Class)) + 
+  #facet_grid(site~.) +
+  geom_bar(stat = "identity")+
+  scale_fill_manual(values = class_colors) +
+  guides(fill = guide_legend(reverse = TRUE, keywidth = 1, keyheight = 1)) +
+  ylab("Relative Abundance (Class > 2%) \n") +
+  xlab("Location Type") +
+  ggtitle("Class Composition of Lake \n Bacterial Communities by Location Type") +
+  theme(axis.text.x=element_text(angle = 30))   # X axis text
+
+
+Bac.class.loc.type.stacked.bar
+ggsave(filename = "figures/Bac.class.loc.type.stack.bar.pdf", plot = Bac.class.loc.type.stacked.bar, height=8, width=6)
+```
+
