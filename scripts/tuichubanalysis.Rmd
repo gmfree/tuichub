@@ -1,0 +1,125 @@
+---
+title: "tuichubanalysis"
+output: pdf_document
+date: "2022-10-06"
+---
+setwd("C:/Users/Admin/Documents/tui/R_tui")
+
+```{r LoadingPackages, include=FALSE}
+library(phyloseq)
+library(vegan)
+library(DESeq2)
+library(dendextend) 
+library(viridis) 
+library(cowplot)
+library(gridExtra)
+library(ggpubr)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+```
+
+```{r Reading In Data}
+
+rm(list=ls())
+
+#importing data
+
+#ASV count table
+count_table <- read.table("C:/Users/Admin/Documents/tui/R_tui/data/outputs/ASV_counts_decontam.tsv", header=T, row.names=1,
+             check.names=F, sep="\t")
+#str(count_table)
+#head(count_table)
+
+#removing blanks from ASV count table
+count_table <- count_table[, -c(145:163)]
+
+# renaming col names to match metadata - using general expressions
+colnames(count_table) <- gsub(pattern = "_S...", replacement = "", x = colnames(count_table))
+colnames(count_table) <- gsub(pattern = "_S..", replacement = "", x = colnames(count_table))
+colnames(count_table) <- gsub(pattern = "_S.", replacement = "", x = colnames(count_table))
+str(count_table)
+head(count_table)
+
+#taxa table 
+taxa_table <- as.matrix(read.table("C:/Users/Admin/Documents/tui/R_tui/data/outputs/ASV_taxonomy_decontam.tsv", header=T, row.names=1,
+             check.names=F, sep="\t"))
+str(taxa_table)
+
+
+# loading metadata: 
+metadata <- read.csv("C:/Users/Admin/Documents/tui/R_tui/data/TC_metadata.csv")
+
+# factors
+metadata$date <- as.factor(metadata$date)
+metadata$location <- as.factor(metadata$location)
+metadata$loc_type <- as.factor(metadata$loc_type)
+metadata$mesocosm <- as.factor(metadata$mesocosm)
+#mesocosm number subset info of stream/lake experiment???
+
+# numerics
+metadata$weight_g <- as.numeric(metadata$weight_g)
+metadata$length_mm <- as.numeric(metadata$length_mm)
+metadata$gutlength_mm <- as.numeric(metadata$gutlength_mm)
+
+# double checking it worked
+class(metadata$date)
+class(metadata$weight_g)
+```
+
+```{r Filtering Taxa, phyloseq object, Fixing Metadata}
+count_tab_phy <- otu_table(count_table, taxa_are_rows=T)
+taxa_tab_phy <- tax_table(taxa_table)
+
+# fixing problem with metadata
+rownames(metadata) 
+# sample names don't correspond to the sample IDs 
+# fix: 
+rownames(metadata) <- metadata$id
+rownames(metadata)
+# now we can see the correct rownames in the df 
+
+# making phyloseq object with sample data 
+metadata_phy <- sample_data(metadata)
+
+# creating a combined phyloseq object - works now! 
+ASV_physeq <- phyloseq(count_tab_phy, taxa_tab_phy, metadata_phy) 
+
+## let's inspect
+df <- as.data.frame(sample_data(ASV_physeq)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(ASV_physeq) # this is the number of reads corresponding to each sample 
+df <- df[order(df$LibrarySize),] # ordering the df by the number of reads from lowest to highest - quite a lot of variation here 
+df$LibrarySize
+df$Index <- seq(nrow(df))
+```
+
+```{r Taxanomic Overview}
+# rank names gives us the phylogenetic ranks for ASVs
+rank_names(ASV_physeq) 
+
+# here we're looking at the phyla present in our taxa, indexing the data frame by phylum 
+table(taxa_tab_phy[, "Kingdom"], exclude = NULL) # 6298 Bacteria, no others 
+table(taxa_tab_phy[, "Phylum"], exclude = NULL) # no NA 
+#table(taxa_tab_phy[, "Class"], exclude = NULL) # 273 NA
+#table(taxa_tab_phy[, "Order"], exclude = NULL) # 643 NA
+#table(taxa_tab_phy[, "Family"], exclude = NULL) # 1351 NA
+```
+
+```{r rarify or not}
+
+pdf(file="figures/rare.raw.pdf", height=4, width=5)
+rarecurve(otu_table(ASV_physeq), step=50, cex=0.5, label=FALSE)
+abline(v = 5000, lty = "dotted", col="red", lwd=2)
+dev.off() 
+
+# remove samples with < 5000 reads
+ASV_physeq_prune <- prune_samples(sample_sums(ASV_physeq) > 5000, ASV_physeq) #89 samples
+rarecurve(otu_table(ASV_physeq_prune), step=50, cex=0.5, label=FALSE)
+
+############# rarefy without replacement, @ 5000, then 8 samples removed, 1753 ASVs
+ps.rare = rarefy_even_depth(PS.fin.prune, rngseed=1000, 
+                             sample.size=0.9*min(sample_sums(PS.fin.prune)), replace=F)
+
+sort(rowSums(otu_table(ps.rare))) # rarify at 5000 reads
+saveRDS(ps.rare, file="output/ps.rare.rds")
+```

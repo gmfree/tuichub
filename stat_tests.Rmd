@@ -1,0 +1,1509 @@
+---
+title: "stat_tests"
+output: html_document
+date: "2023-02-21"
+editor_options: 
+  chunk_output_type: console
+---
+```{r LoadingPackages, include=FALSE}
+library(phyloseq)
+library(vegan)
+library(DESeq2)
+library(dendextend) 
+library(viridis) 
+library(cowplot)
+library(gridExtra)
+library(ggpubr)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(RColorBrewer)
+library(pacman)
+pacman::p_load('knitr', 'tidyverse', 'magrittr', 'effects', 'devtools',
+               'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan",
+               "cowplot", "decontam","BiocManager", "dada2", "microbiome")
+pacman::p_load('FedData', 'latticeExtra', 'scales', 'viridis', 'ggmap', 'phyloseq', 'raster', 'rgdal', 'RColorBrewer', 'ggplot2', 'vegan', 'ggplot2', 'phyloseq', 'bipartite', 'plotrix', 'viridis', 'lattice', 'fossil', 'plyr', 'devtools', 'ggpubr', 'gridExtra', 'cowplot')
+pacman::p_load("ade4", "multtest","phyloseq", "car", "igraph", "cowplot", "SpiecEasi", "rhdf5","ggplot2","colorspace","stringi", "geosphere",  "ggmap", "dplyr", "ggbiplot", "graphics", "gridExtra", "geosphere", "sf", "sp", "gstat", "raster", "spData", "tmap", "leaflet", "mapview", "shiny", "fossil", "RgoogleMaps", "plyr", "ggsn", "vegan", "multcomp", "dplyr", "grid", "scales", "gridExtra", "emmeans", "multcompView", "ggpubr", "Rmisc", "purrr", "RVAideMemoire", "RColorBrewer", "vegan")
+
+```
+
+```{r load data}
+taxa<- readRDS("output/taxaTable.rds")
+ps<- readRDS("output/ps.rds")
+ps.fin<- readRDS("output/ps.fin.rds")
+ps.rare<- readRDS("output/ps.rare.rds")
+ps.rare.new<- readRDS("output/ps.rare.new.rds")
+
+ps.rare.sample.df<-read.csv("output/phyloseq_elements/ps.rare.sample.df.csv")
+ps.rare.ASV.df<-read.csv("output/phyloseq_elements/ps.rare.ASV.df.csv")
+ps.rare.tax.df<-read.csv("output/phyloseq_elements/ps.rare.tax.df.csv")
+ps.rare.seq.df<-read.csv("output/phyloseq_elements/ps.rare.seq.df.csv")
+ps.rare.ASV.df.num<-read.csv("output/phyloseq_elements/ps.rare.ASV.df.num.csv")
+
+
+ps.exp<- readRDS("output/ps.exp.rds")
+ps.notexp<- readRDS("output/ps.notexp.rds")
+exp.streams<- readRDS("output/exp.streams.rds")
+exp.lakes<- readRDS("output/exp.lakes.rds")
+sites.streams<- readRDS("output/sites.streams.rds")
+sites.lakes<- readRDS("output/sites.lakes.rds")
+
+```
+
+```{r edit metadata/exp/notexp}
+metadata_final = data.frame (sample_data(ps.rare.new))
+comp.metadata <- as.data.frame(metadata_final[, c("id", "location", "loc_type", "mesocosm", "latitude", "longitude")])
+
+##experimental mesocosm data configure##
+exp <- ps.rare.new@sam_data[ps.rare.new@sam_data$location %in% c('Experiment'),]
+exp
+exp.df = data.frame (sample_data(exp))
+class(exp.df$loc_type)
+class(exp.df$location)
+exp.df$loc_type <- as.factor(exp.df$loc_type)
+exp.df$location <- as.factor(exp.df$location)
+exp.df$mesocosm <- as.factor(exp.df$mesocosm)
+exp.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X %in% c('363', '364', '365', '370', '447', '448', '451', '453', '454', '455', '457', '459', '460', '461', '463', '464','466','467','468','469','470','471','472','473','474','479','481','483','484','489','490','491','492','493','501','504','507','519','524','532'),]
+
+ps.exp <-phyloseq(otu_table(ps.rare.new@otu_table, taxa_are_rows=FALSE),
+              sample_data(exp), 
+              tax_table(ps.rare.new@tax_table))
+saveRDS(ps.exp, file="output/ps.exp.rds")
+
+##sites/notexp data configure##
+notexp <- ps.rare.new@sam_data[ps.rare.new@sam_data$location %in% c('Layton Springs', 'Twin Lakes', 'June Lake', 'Hot Creek', 'Twin Lakes BP', 'McNally Canal', 'Warm Lake', 'Crowley Lake', 'Owens River', 'Mammoth Creek', 'Layton Springs ', 'Twin Lakes '),]
+notexp
+notexp.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X %in% c('10', '11', '12', '122', '123', '124', '125', '129', '130', '132', '133', '135', '136', '137', '15', '152', '153','17','18','202','204','21','247','248','261','297','3','31','32','36','382','39','410','44','47','49','6','74','78','8','81','9','90'),]
+notexp.df = data.frame (sample_data(notexp))
+notexp.df$loc_type <- as.factor(notexp.df$loc_type)
+notexp.df$location <- as.factor(notexp.df$location)
+notexp.df$mesocosm <- as.factor(notexp.df$mesocosm)
+
+ps.notexp <-phyloseq(otu_table(ps.rare.new@otu_table, taxa_are_rows=FALSE),
+              sample_data(notexp), 
+              tax_table(ps.rare.new@tax_table))
+saveRDS(ps.notexp, file="output/ps.notexp.rds")
+
+
+##exp.streams##
+exp.streams <- exp[exp$loc_type %in% c('stream'),]
+exp.streams
+exp.streams <-phyloseq(otu_table(ps.exp@otu_table, taxa_are_rows=FALSE),
+              sample_data(exp.streams), 
+              tax_table(ps.exp@tax_table))
+saveRDS(exp.streams, file="output/exp.streams.rds")
+
+##exp.lakes##
+exp.lakes <- exp[exp$loc_type %in% c('lake'),]
+exp.lakes
+exp.lakes <-phyloseq(otu_table(ps.exp@otu_table, taxa_are_rows=FALSE),
+              sample_data(exp.lakes), 
+              tax_table(ps.exp@tax_table))
+saveRDS(exp.lakes, file="output/exp.lakes.rds")
+
+##sites.streams##
+sites.streams <- notexp[notexp$loc_type %in% c('stream'),]
+sites.streams
+sites.streams <-phyloseq(otu_table(ps.notexp@otu_table, taxa_are_rows=FALSE),
+              sample_data(sites.streams), 
+              tax_table(ps.notexp@tax_table))
+saveRDS(sites.streams, file="output/sites.streams.rds")
+
+##sites.lakes##
+sites.lakes <- notexp[notexp$loc_type %in% c('lake'),]
+sites.lakes
+sites.lakes <-phyloseq(otu_table(ps.notexp@otu_table, taxa_are_rows=FALSE),
+              sample_data(sites.lakes), 
+              tax_table(ps.notexp@tax_table))
+saveRDS(sites.lakes, file="output/sites.lakes.rds")
+```
+
+
+
+#copy paste from trout_mb
+
+```{r Boxplots - Alpha diversity measures, mann-whitney differences}
+# histogram plot of number of reads per samples 
+t.ASV <- (t(ps.rare.ASV.df))
+ 
+taxa <- otu_table(tax_glom(ps.rare))
+ps.taxa <- otu_table(tax_glom(ps))
+ 
+hist(rowSums(otu_table(ps.taxa)))
+
+# rarefying samples to 2238 ASVs 
+set.seed(1999)
+physeq.rare.3000 <- rarefy_even_depth(ps.fin, rngseed=3e3, sample.size = 3000)
+sort(rowSums(otu_table(t(physeq.rare.3000))))
+
+# how does our data change when removing 11 samples? 
+# no of individuals/site 
+table(sample_data(physeq.rare.3000)[, "location"], exclude = NULL)
+
+# quick look at alpha diversity
+alpha.diversity <- plot_richness(physeq.rare.3000, color="location", measures=c("Chao1", "Shannon")) + 
+    theme_bw() + theme(legend.title = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+alpha.diversity 
+# some outliers of very high diversity and very low diversity, need to look at patterns more clearly by site 
+
+# observed with boxplot
+alpha.site <- plot_richness(physeq.rare.3000, x="location", measures=c("Observed")) + 
+  geom_boxplot(aes(fill = "location")) +
+  theme_classic() + 
+  scale_x_discrete(guide = guide_axis(angle = 90)) 
+alpha.site # sooooo much variation wow, outlier of a granite 2 observation 
+
+# shannon boxplot 
+shannon.site <- plot_richness(physeq.rare.3000, x = "location", measures=c("Shannon")) +
+  geom_boxplot(aes(fill = "location")) + 
+  stat_compare_means(method = "anova") + 
+  labs(x = NULL) + 
+  theme(legend.position = NULL, 
+        axis.title.x = NULL) + 
+  theme_classic() + 
+  scale_x_discrete(guide = guide_axis(angle = 90)) + 
+  ylab("Shannon Diversity")
+shannon.site # doesn't seem to be a pattern here by site 
+ggsave("figures/shannon.site.tiff", width = 7.5, height = 5)
+# kruskal wallis - p = 0.063 
+
+# alpha boxplot by elevation category 
+boxplot.loc_type <- plot_richness(physeq.rare.3000, x = "loc_type", measures="Shannon", title = NULL)+
+  geom_boxplot(aes(fill = "loc_type")) + 
+  #stat_compare_means() +
+  labs(x = NULL) + 
+  theme(legend.position = NULL, 
+        axis.title.x = NULL, 
+        show.legend = FALSE) + 
+  theme_classic() + 
+  ylab("Shannon Diversity")
+boxplot.loc_type
+ggsave("figures/loc_type.boxplot.tiff", width = 5, height = 5)
+ #scale_x_discrete(guide = guide_axis(angle = 90)) 
+```
+
+```{r NMDS with Vegan}
+# Organizing Metadata - Use Standardized Metadata Object
+
+# creating a dataframe from count table in 
+# bray-curtis distance matrix 
+
+# making our filtered ASV count table, metadata, and taxa table
+counts_final <- as.data.frame(otu_table(physeq.rare))
+taxa_final <- as.data.frame(tax_table(physeq.rare))
+metadata_final <- as.data.frame(sample_data(physeq.rare))
+
+# log transforming doc 
+metadata_final$log_doc <- log(metadata_final$doc_mgl)
+
+# standardizing metadata
+metadata_stand <- as.data.frame(scale(metadata_final[,c(6:17,18,19,22)]))
+metadata_stand <- merge(metadata_final[, c(1:5,21)], metadata_stand, by = 'row.names', all = TRUE)
+metadata_stand <- metadata_stand[, -1]
+rownames(metadata_stand) <- metadata_final$no
+```
+
+```{r PERMANOVA with NMDS}
+# PERMANOVA with NMDS 
+# Here to start basic - looking if theres difference between above and below treeline samples problems: way more above than below samples, somewhat arbitrary elevation of 2900m 
+
+
+# re rarefy and calculate bray curtis matrix using avgdist function - feeding pre rarefied data 
+raw.asv.table <- as.data.frame(otu_table(ps.fin))
+raw.metdata <- as.data.frame(sample_data(ps.fin))
+raw.taxa <- as.data.frame(tax_table(ps.fin))
+
+# avgdist function 
+avg.bray <- avgdist(t(raw.asv.table), sample = 5000, iterations = 1e3)
+
+# nmds below 
+set.seed(1999)
+nmds_2 <- metaMDS(avg.bray,
+          distance = "bray",
+          k = 3,
+          maxit = 999, 
+          trymax = 500,
+          wascores = TRUE)
+nmds_2$sites <- nmds_2$location
+species.scores2 <- as.data.frame(scores(nmds_2, display="sites"))
+nmds2.merge <- merge(metadata_stand, species.scores2, by = 'row.names', all = TRUE)
+
+# adding centroid 
+centroid <- nmds2.merge %>% 
+  group_by(elev.cat) %>%
+  summarize(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+
+# visualization - whole ton of variation here 
+treeline.nmds2 <- ggplot(nmds2.merge, aes(x=NMDS1, y=NMDS2, fill = elev.cat, color = elev.cat))+
+  geom_point() + 
+  stat_ellipse(show.legend = FALSE, geom = "polygon", alpha = 0.2) +
+  #geom_point(data = centroid, size = 5, shape = 21, color = 'black', 
+            # aes(fill = elev.cat), show.legend = FALSE) +
+  theme_classic() + 
+treeline.nmds2
+ggsave("figures/treeline.nmds.tiff", width = 6, height = 4)
+
+# site level NMDS 
+site.nmds <- ggplot(nmds2.merge, aes(x=NMDS1, y=NMDS2, fill = site, color = site))+
+  geom_point() + 
+  #stat_ellipse(show.legend = FALSE, geom = "polygon", alpha = 0.2) +
+  theme(legend.key.size = unit(9, "pt")) + 
+  theme_classic()
+site.nmds
+ggsave("figures/site.nmds.tiff", width = 6, height = 4)
+
+# now we're doing elevation...could get gnarly 
+elev.nmds2 <- ggplot(nmds2.merge, aes(x=NMDS1, y=NMDS2, color = elevation))+
+  geom_point() + 
+  #geom_point(data = centroid, size = 5, shape = 21, color = 'black', 
+             #aes(fill = elev.cat), show.legend = FALSE) +
+  theme_classic()
+elev.nmds2
+
+# question - are the centroids significantly different from each other for above and below treeline? 
+
+# super simple model: 
+model.elevcat1 <- adonis2(avg.bray ~ nmds2.merge$elevation)  
+model.elevcat1 # significant differences between groups - encouraging or chasing variation?
+
+# betadispersion 
+bd.elevcat <- betadisper(avg.bray, nmds2.merge$elev.cat)
+anova(bd.elevcat) # no difference in variation between groups - makes sense and good result, using a 
+
+# trying by site
+model.site <- adonis2(avg.bray ~ nmds2.merge$site) #extracting p-value 
+model.site # again significant - weird, lets look at betadispersion, maybe its just chasing variation thats in there? 
+
+bd.site <- betadisper(avg.bray, nmds2.merge$site) 
+anova(bd.site) # no difference in dispersion between sites 
+```
+
+```{r integrating site into model }
+set.seed(1999)
+# first model - elevation cat by itself
+mod.1 <- adonis2(avg.bray ~ nmds2.merge$elev.cat)  
+mod.1 
+
+# site as a fixed factor\
+mod.2 <- adonis2(avg.bray ~ nmds2.merge$elev.cat + nmds2.merge$site)
+mod.2
+
+
+# using site as strata (random effect essentially) - need to use how() function now to do restricted PERMANOVA 
+mod.3 <- adonis2(avg.bray ~ nmds2.merge$elev.cat, strata = nmds2.merge$site)
+mod.3
+
+# site (lake) nested within categories 
+
+# basin and lcn as random effects, site as an explanatory variable - makes more sense 
+mod.4 <- adonis2(avg.bray ~ elev.cat, strata = nmds2.merge$site, data = nmds2.merge)
+mod.4
+# something is wrong here....the p-values are identical between site and elevation, doesn't seem correct, the R2 are different 
+
+# site as an interaction - skeptical here 
+mod.5 <- adonis2(avg.bray ~ elev.cat*site, data = nmds2.merge)
+mod.5
+
+# elevation category - does not explain a lot of variation, although it is significant 
+# site explains more variation and is significant 
+# when accounting for site as strata (I guess the same as a random effect?) we see the significance disappear 
+# maybe site just captures more of the variation because there is more levels? unsure I need to investigate more 
+```
+
+```{r PERMANOVA Models - Restricted Permutation Tests}
+# fitting multiple models - wonder if there's a model selection tool here
+# site as a block? no? - we're interested in site
+set.seed(1999)
+perm <- how(nperm = 999, blocks = nmds2.merge$basin_lcn, Within(type = "free"))
+adonis2(
+  avg.bray ~ nmds2.merge$elev.cat + nmds2.merge$elevation + nmds2.merge$site,
+  permutations = perm,
+  by = "margin"
+)
+# getting minimum p value (0.001) - not meaningful then? 
+
+# exact test instead? 
+```
+
+```{r PCoA - guide from Pat Schloss }
+# starting with distance matrix from vegan: avg.bray
+set.seed(1999)
+pcoa <- cmdscale(avg.bray, k=2, eig = TRUE, add = TRUE)
+positions <- as.data.frame(pcoa$points)
+colnames(positions) <- c("pcoa1", "pcoa2")
+
+# calculating percent explained using eig values 
+pct_explained <- round(100 * pcoa$eig/sum(pcoa$eig), digits = 1)
+
+labs <- c(glue("PCo 1 ({pct_explained[1]}%)"),
+          glue("PCo 2 ({pct_explained[2]}%)"))
+positions %>% 
+  as_tibble() %>% 
+  ggplot(aes(x=pcoa1, y=pcoa2)) + 
+  geom_point() + 
+  labs(x = labs[1], y = labs[2]) + 
+  theme_classic()
+
+# merging tibble with metadata and plotting 
+merge(positions, metadata_final, by = 'row.names', all = TRUE) %>% 
+  ggplot(aes(x=pcoa1, y=pcoa2, fill = elev.cat, color = elev.cat)) + 
+  geom_point() + 
+  stat_ellipse(show.legend = FALSE, geom = "polygon", alpha = 0.2) +
+  labs(x = labs[1], y=labs[2]) + 
+  theme(show.legend = FALSE) +
+  theme_classic()
+ggsave("figures/treeline.pcoa.tiff", width = 6, height = 4)
+# permutation test? - already did, adonis model 
+```
+
+## Distance-based redundancy analysis
+```{r Fitting dbRDA models using dbrda}
+# warning - Variance Inflation Factor: variables that are highly correlated with each other
+
+# ordistep - stepwise model selection, null to full global model, ex: 
+# global model: upr <- capscale(dist ~ ., data = data)
+# null model: lwer <- capscale(dist ~ 1, data = data)
+# set.seed(x) 
+# mods <- ordistep(lwr, scope = formula(upr), trace = 0)
+# also ordiR2step()
+# 2 step solution for Blanchet 
+# 1) global test of all constraints - is it significantly different from a null model? proceed if significant
+# 2) Usual significance threshold (0.05) and global R2 adjusted value (compares models to global adjusted R2)
+# permutation tests - used to calculate p-values for significant explanatory variables
+
+# work flow: 
+# 1) Decide which explanatory variables are most important for your hypotheses 
+# 2) Include in df, do stepwise selection 
+# 3) Plot results 
+# 4) Permutation test - understand which variables are explaining most of the variation 
+```
+
+```{r Fitting dbrda Models with Stepwise Selection (ordiR2step)}
+# variables to include: site, basin_lcn, elev.cat, latitude, longitude, elevation, temp_c, chla, tc (maybe? - losing 13 observations), TN
+
+# make global model df 
+global_df <- metadata_stand[, c(3,5,6,9:12,14:18,20,21)]
+
+# distance matrix 
+set.seed(1999)
+avg.dist.bray <- avgdist(t(as.data.frame(otu_table(ASV_physeq))), sample = 2238, iterations = 1e3)
+
+# fitting global model, then performing stepwise selection with ordiRstep
+set.seed(1999) 
+upr <- dbrda(avg.dist.bray ~ . + I(temp_c)^2 + I(elevation)^2 + I(depth_ft)^2 + I(chla_ugl)^2 + I(log_doc)^2 + I(longitude.)^2 + I(latitude.)^2 + I(tn_mgl.l)^2 + I(do_mg.l)^2 + I(ph)^2, data = global_df)
+lwr <- dbrda(avg.dist.bray ~ 1, data = global_df, na.action = 'na.omit')
+mod_selec <- ordiR2step(lwr, scope = formula(upr))
+anova(mod_selec)# selecting site as most important factor - good stuff honestly simple semi strong model here 
+anova(mod_selec, by = "axis")
+RsquareAdj(mod_selec)
+screeplot(mod_selec)
+```
+
+```{r Fitting dbRDA without model selection - variables impt to hypothesis}
+### one model - variables important to hypothesis ### 
+
+# distance matrix: 
+
+# fitting ful dbrda - adding quadratic terms
+set.seed(1999)
+full.dbrda <-dbrda(avg.dist.bray ~ . + I(temp_c)^2 + I(elevation)^2 + I(depth_ft)^2 + I(chla_ugl)^2 + I(log_doc)^2 + I(longitude.)^2 + I(latitude.)^2 + I(tn_mgl.l)^2 + I(do_mg.l)^2 + I(ph)^2, data = global_df)
+full.dbrda # model does a poor job explaining alot of the variation, not surprised here
+ggord(full.dbrda)
+RsquareAdj(full.dbrda)
+
+anova(full.dbrda, by = "terms")
+# pretty wild result - site carries the whole model (interesting in a way)
+```
+
+```{r plotting dbRDA in ggplot - based on RDA landscape genomics tutorial}
+# two dbrda's -> a full dbrda and a model selection one 
+
+##plotting model selection model##
+modselec_scores <- as.data.frame(scores(mod_selec, choices=c(1,2), display="bp", scaling="none"))
+
+# trout 
+modselec_trout <- as.data.frame(scores(mod_selec, choices = c(1,2), display = "sites"))
+merge.dbrda <- merge(modselec_trout, metadata_stand, by = "row.names")
+
+# lets see what happens here 
+ggplot() +
+  geom_hline(yintercept=0, linetype="dashed", color = gray(.80), size=0.6) +
+  geom_vline(xintercept=0, linetype="dashed", color = gray(.80), size=0.6) +
+  geom_point(data = merge.dbrda, aes(x=dbRDA1, y=dbRDA2, color = elev.cat), size = 1.4, alpha = 0.8) + 
+  geom_segment(data = modselec_scores, aes(xend=dbRDA1, yend=dbRDA2, x=0, y=0), colour="black", size=0.15, linetype=1, arrow=arrow(length = unit(0.02, "npc"))) +
+  geom_text(data = modselec_scores, aes(x=1.8*dbRDA1, y=1.8*dbRDA2, label = row.names(modselec_scores)), size = 2.5) +
+  xlab("dbRDA 1 (33.7%)") + ylab("dbRDA 2 (19.0 %)") +
+  guides(color=NULL) +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), panel.background = element_blank(), strip.text = element_text(size=11))
+ggsave("figures/dbrda_sites.tiff", width = 7, height = 5)
+
+# scree plots 
+full.scree <- screeplot(full.dbrda, type = "lines")
+selec.scree <- screeplot(mod_selec, type = "lines")
+grid.arrange(screeplot(full.dbrda, type = "lines"), screeplot(mod_selec, type = "lines"))
+
+set.seed(1999)
+test.dbrda <- dbrda(avg.dist.bray ~ lake_area_ha, data = global_df)
+test.dbrda
+anova(test.dbrda, by = "terms")
+```
+
+
+
+
+
+
+#copy paste from LMB_tui/LMBT
+```{r PERMANOVA, echo=TRUE}
+
+### Phyloseq ###
+########################## NMDS
+# the saved phyloseq ASV table is 'ps.rare.ASV.df'
+
+ps.rare.ASV.df
+Xnum<-sapply(strsplit(ps.rare.ASV.df$X, "_"), `[`,2)
+ps.rare.ASV.df$X<-(Xnum)
+ps.rare.ASV.df[1:1110] <- lapply(ps.rare.ASV.df[1:1110], as.numeric)
+class(ps.rare.ASV.df$X)
+class(ps.rare.ASV.df$ASV1)
+ps.rare.ASV.df.num <- ps.rare.ASV.df
+write.csv(ps.rare.ASV.df.num, "output/phyloseq_elements/ps.rare.ASV.df.num.csv")
+
+
+
+class(exp)
+
+exp.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X %in% c('363', '364', '365', '370', '447', '448', '451', '453', '454', '455', '457', '459', '460', '461', '463', '464','466','467','468','469','470','471','472','473','474','479','481','483','484','489','490','491','492','493','501','504','507','519','524','532'),]
+
+
+notexp.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X %in% c('10', '11', '12', '122', '123', '124', '125', '129', '130', '132', '133', '135', '136', '137', '15', '152', '153','17','18','202','204','21','247','248','261','297','3','31','32','36','382','39','410','44','47','49','6','74','78','8','81','9','90'),]
+
+
+sam_data.df = data.frame (sample_data(ps.rare.new))
+class(sam_data.df)
+
+exp.df = data.frame (sample_data(exp))
+class(exp.df$loc_type)
+class(exp.df$location)
+exp.df$loc_type <- as.factor(exp.df$loc_type)
+exp.df$location <- as.factor(exp.df$location)
+exp.df$mesocosm <- as.factor(exp.df$mesocosm)
+
+# Bray Curtis distance matrix
+bc_dist_exp = as.matrix((vegdist(exp.ASV, "bray"))) 
+
+# Bray PERMANOVA 
+bc.adonis.exp <- adonis2(bc_dist_exp~loc_type*date, data=exp.df, permutations = 9999)
+bc.adonis.exp # site, year effect
+write.csv(bc.adonis.exp, "output/bc.adonis.exp.LC.date.csv")
+
+
+dd.exp<-vegdist(bc_dist_exp, method="bray")
+
+######## test for beta dispersion by YEAR
+mod.beta.loc_type.exp<-betadisper(dd.exp, exp.df$loc_type) # multivariate dispersions
+##Error in x - c : non-conformable arrays
+aa <- anova(mod.beta.loc_type.exp) # not significant by YEAR  (equal dispersion)
+# cannot reject null hypothesis that the groups have equal dispersion
+write.csv(aa, "data/anova.loc_type.exp.csv")
+
+
+
+
+notexp.df = data.frame (sample_data(ps.notexp))
+notexp.df$loc_type <- as.factor(notexp.df$loc_type)
+notexp.df$location <- as.factor(notexp.df$location)
+notexp.df$mesocosm <- as.factor(notexp.df$mesocosm)
+
+# Bray Curtis distance matrix
+bc_dist_notexp = as.matrix((vegdist(notexp.ASV, "bray"))) 
+
+# Bray PERMANOVA 
+bc.adonis.notexp <- adonis2(bc_dist_notexp~loc_type*location, data=notexp.df, permutations = 9999)
+bc.adonis.notexp # site, year effect
+write.csv(bc.adonis.notexp, "data/bc.adonis.notexp.LC.location.csv")
+
+
+dd.notexp<-vegdist(bc_dist_notexp, method="bray")
+
+######## test for beta dispersion by YEAR
+mod.beta.loc_type.notexp<-betadisper(dd.notexp, notexp.df$loc_type) # multivariate dispersions
+##Error in x - c : non-conformable arrays
+aa.notexp <- anova(mod.beta.loc_type.notexp) # not significant by YEAR  (equal dispersion)
+# cannot reject null hypothesis that the groups have equal dispersion
+write.csv(aa.notexp, "data/anova.loc_type.notexp.csv")
+
+
+
+
+
+
+
+
+
+
+
+
+#####################^^^^^^^^^^^^^^^^^^^^^^^
+plot(mod.beta.loc_type.notexp, )
+
+
+
+plot(mod.beta.loc_type.exp)
+dev.copy(pdf, "figures/mod.beta.loc_type.exp.pdf", height=8, width=10)
+dev.off()
+boxplot(mod.beta.location)
+dev.copy(pdf, "figures/mod.beta.location.pdf", height=4, width=5)
+dev.off()
+
+
+
+
+#specify path to save PDF to
+destination = 'figures/mod.beta.loc_type.3.pdf'
+
+#open PDF
+pdf(file=destination)
+
+plot(mod.beta.loc_type)
+plot(mod.beta.loc_type.exp) 
+plot(mod.beta.loc_type.notexp)
+#save plots to PDF
+for (i in 1:3) {plot(mod.beta.loc_type) + plot(mod.beta.loc_type.exp) + plot(mod.beta.loc_type.notexp)}
+
+#turn off PDF plotting
+dev.off() 
+
+
+
+
+### test for beta dispersion by SITE
+mod.beta.loc_type<-betadisper(dd, ps.rare.sample.df$loc_type) # multivariate dispersions
+anova(mod.beta.loc_type) # significant by site  (unequal dispersion)
+#  reject null hypothesis that the groups have equal dispersion
+
+plot(mod.beta.loc_type)
+dev.copy(pdf, "figures/mod.beta.loc_type.plot.pdf", height=5, width=6)
+dev.off()
+boxplot(mod.beta.loc_type)
+dev.copy(pdf, "figures/mod.beta.loc_type.pdf", height=5, width=6)
+dev.off()
+```
+
+```{r plots and analysis, eval =FALSE}
+# base code approach to NMDS
+
+# k = 3 dimensions
+set.seed(520)
+NMDS = metaMDS(bc_dist, k=3, trymax=100)
+NMDS1=NMDS$points[,1]
+NMDS2=NMDS$points[,2]
+NMDS.plot.df=data.frame(NMDS1=NMDS1,NMDS2=NMDS2, 
+                        location=ps.rare.sample.df$location,
+                        loc_type=ps.rare.sample.df$loc_type)
+
+
+###
+# plotting elements
+loc_type.group<-NMDS.plot.df$loc_type
+location.group<-NMDS.plot.df$location
+# make colors for year
+loc_type.col<-c("coral","mediumseagreen","goldenrod","dodgerblue")
+
+# make colors for sites
+library(RColorBrewer)
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+###
+
+### make plot by habitat with vectors for environment
+ordiplot(NMDS, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.6, 0.8))
+
+
+plot(NMDS)+ abline(h = 0, lty = "dotted") + abline(v = 0, lty = "dotted") 
++ points(NMDS, "sites", cex=0.8, pch=16, col=date.col[date.group]) + ordiellipse(NMDS, groups=date.group, kind="sd", draw="polygon", border=date.col, conf=0.95, alpha=30) +legend("topright", legend=levels(date.group), cex=1, col=date.col, pch=16, pt.cex=1, bty="n")
+
+
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS, "sites", cex=0.8, pch=16, col=date.col[date.group])
+ordiellipse(NMDS, groups=date.group, kind="sd", draw="polygon", border=date.col, conf=0.95, alpha=30)
+legend("topright", legend=levels(date.group), cex=1, col=date.col, pch=16, pt.cex=1, bty="n")
+
+dev.copy(pdf, "figures/NMDS.date.pdf", height=5.5, width=6)
+dev.off() 
+
+
+
+
+### make plot by habitat with vectors for environment
+ordiplot(NMDS, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.6, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS, "sites", cex=0.8, pch=16, col=loc_type.col[loc_type.group])
+ordiellipse(NMDS, groups=loc_type.group, kind="sd", draw="polygon", border=loc_type.col, conf=0.95, alpha=30)
+legend("topright", legend=levels(loc_type.group), cex=1, col=loc_typ.col, pch=16, pt.cex=1, bty="n")
+
+dev.copy(pdf, "figures/NMDS.year.pdf", height=5.5, width=6)
+dev.off() 
+
+
+
+
+
+
+
+
+
+######### by sites
+ordiplot(NMDS, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.6, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS, "sites", cex=0.8, pch=17, col=col_vector[location.group])
+ordiellipse(NMDS, groups=location.group, kind="sd", draw="polygon", 
+            border=col_vector, conf=0.95, alpha=30)
+legend("topright", legend=location.group, cex=0.5, col=col_vector, pch=17, pt.cex=0.8, bty="n", 
+       inset=c(0.4,0.05), x.intersp = 1.2, y.intersp = 0.6)
+
+dev.copy(pdf, "figures/NMDS.site.pdf", height=5.5, width=6)
+dev.off()
+```
+
+```{r plots and analysis edited}
+
+###non experimental mesocosm samples, site samples###
+notexp.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X %in% c('10', '11', '12', '122', '123', '124', '125', '129', '130', '132', '133', '135', '136', '137', '15', '152', '153','17','18','202','204','21','247','248','261','297','3','31','32','36','382','39','410','44','47','49','6','74','78','8','81','9','90'),]
+
+bc_dist_notexp = as.matrix((vegdist(notexp.ASV, "bray"))) 
+
+NMDS_ne = metaMDS(bc_dist_notexp, k=3, trymax=100)
+NMDS1_ne=NMDS_ne$points[,1]
+NMDS2_ne=NMDS_ne$points[,2]
+NMDS.plot.df.ne=data.frame(NMDS1_ne=NMDS1_ne,NMDS2_ne=NMDS2_ne, 
+                        location=notexp.df$location,
+                        loc_type=notexp.df$loc_type)
+
+loc_type.ne.group<-NMDS.plot.df.ne$loc_type
+location.ne.group<-NMDS.plot.df.ne$location
+loc_type.col<-c("coral","mediumseagreen","goldenrod","dodgerblue")
+
+# make colors for sites
+library(RColorBrewer)
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+col_vector2 = unlist(mapply(brewer.pal(12, name = 'Set3')))
+
+Set3colpals = brewer.pal.info[brewer.pal.info$name == 'Set3']
+Set3vector = unlist(mapply(brewer.pal, Set3colpals$maxcolors, rownames(Set3colpals)))
+
+new.colors =  c("#E41A1C", "#377EB8", "#4DAF4A" ,"#984EA3" ,"#FF7F00" , "#A65628", "#1B9E77", "#F781BF", "#999999")
+
+### make plot by habitat with vectors for environment
+ordiplot(NMDS_ne, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.6, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS_ne, "sites", cex=0.8, pch=16, col=loc_type.col[loc_type.ne.group])
+ordiellipse(NMDS_ne, groups=loc_type.ne.group, kind="sd", draw="polygon", border=loc_type.col, conf=0.95, alpha=30)
+legend("top", legend=levels(loc_type.ne.group), cex=1, col=loc_type.col, pch=16, pt.cex=1, bty="n")
+
+dev.copy(pdf, "figures/NMDS_ne.loc_type.pdf", height=6, width=7)
+dev.off() 
+
+
+######### by sites
+ordiplot(NMDS_ne, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.8, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS_ne, "sites", cex=0.8, pch=17, col=new.colors[location.ne.group])
+ordiellipse(NMDS_ne, groups=location.ne.group, kind="sd", draw="polygon", 
+            border= new.colors, conf=0.95, alpha=30)
+legend(x=0.5, y=0.6, legend=levels(location.ne.group), cex=0.75, col=new.colors, pch=17, pt.cex=0.8, bty="n", 
+       inset=c(0.4,0.05), x.intersp = 1.2, y.intersp = 0.6)
+
+dev.copy(pdf, "figures/stat_tests/NMDS.ne.location.colors.pdf", height=7, width=8)
+dev.off()
+
+
+
+
+
+###experimental mesocosms###
+
+bc_dist_exp = as.matrix((vegdist(exp.ASV, "bray"))) 
+
+NMDS.e = metaMDS(bc_dist_exp, k=3, trymax=100)
+NMDS1.e=NMDS.e$points[,1]
+NMDS2.e=NMDS.e$points[,2]
+NMDS.plot.df.e=data.frame(NMDS1.e=NMDS1.e,NMDS2.e=NMDS2.e, 
+                        location=exp.df$location,
+                        loc_type=exp.df$loc_type)
+
+loc_type.e.group<-NMDS.plot.df.e$loc_type
+location.e.group<-NMDS.plot.df.e$location
+loc_type.col<-c("coral","mediumseagreen","goldenrod","dodgerblue")
+
+# make colors for sites
+library(RColorBrewer)
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+
+
+### make plot by habitat with vectors for environment
+ordiplot(NMDS.e, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.3, 0.3))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS.e, "sites", cex=0.8, pch=16, col=loc_type.col[loc_type.e.group])
+ordiellipse(NMDS.e, groups=loc_type.e.group, kind="sd", draw="polygon", border=loc_type.col, conf=0.95, alpha=30)
+legend("top", legend=levels(loc_type.e.group), cex=1, col=loc_type.col, pch=16, pt.cex=1, bty="n")
+
+dev.copy(pdf, "figures/NMDS.e.loc_type.pdf", height=6, width=7)
+dev.off() 
+
+```
+
+```{r plots and analysis streams/lakes}
+new.colors =  c("#E41A1C", "#377EB8", "#4DAF4A" ,"#984EA3" ,"#FF7F00" , "#A65628", "#1B9E77", "#F781BF", "#999999")
+
+e.lakes.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X %in% c('447', '448','451','453','454','455','457','459','460','461','463','464','466','467','468','469','470','471','472','473','474','479','481'),]
+e.streams.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X.1 %in% c('363','364','365','370','483','484','489','490','491','492','493','501','504','507','519','524','532'),]
+
+######### sites.streams
+notexp.df = data.frame (sample_data(ps.notexp))
+notexp.df$loc_type <- as.factor(notexp.df$loc_type)
+notexp.df$location <- as.factor(notexp.df$location)
+notexp.df$mesocosm <- as.factor(notexp.df$mesocosm)
+
+ne.streams.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X.1 %in% c(4:14, 26, 35, 78:79, 81, 83),]
+
+bc_dist_nest = as.matrix((vegdist(ne.streams.ASV, "bray"))) 
+NMDS_nest = metaMDS(bc_dist_nest, k=3, trymax=100)
+NMDS1_nest=NMDS_nest$points[,1]
+NMDS2_nest=NMDS_nest$points[,2]
+NMDS.df.nest=data.frame(NMDS1=NMDS1_nest, 
+                        NMDS2=NMDS2_nest, 
+                        location=notexp.df[notexp.df$location %in% c('Layton Springs', 'Hot Creek', 'Mammoth Creek', 'McNally Canal'),4],
+                        loc_type=notexp.df[notexp.df$loc_type %in% c('stream'),5])
+
+loc_type.nest.group<-NMDS.df.nest$loc_type
+location.nest.group<-NMDS.df.nest$location
+
+
+##plot sites.streams
+ordiplot(NMDS_nest, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.8, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS_nest, "sites", cex=0.8, pch=17, col=new.colors[location.nest.group])
+ordiellipse(NMDS_nest, groups=location.nest.group, kind="sd", draw="polygon", 
+            border= new.colors, conf=0.95, alpha=30)
+legend(x=0.5, y=0.6, legend=levels(location.nest.group), cex=0.75, col=new.colors, pch=17, pt.cex=0.8, bty="n", 
+       inset=c(0.4,0.05), x.intersp = 1.2, y.intersp = 0.6)
+
+dev.copy(pdf, "figures/stat_tests/NMDS.sites.streams.pdf", height=7, width=8)
+dev.off()
+
+
+######### sites.lakes
+notexp.df = data.frame (sample_data(ps.notexp))
+notexp.df$loc_type <- as.factor(notexp.df$loc_type)
+notexp.df$location <- as.factor(notexp.df$location)
+notexp.df$mesocosm <- as.factor(notexp.df$mesocosm)
+
+ne.lakes.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X.1 %in% c(1:3, 15:25, 27:30, 36:38, 55, 66, 77, 80, 82),]
+
+bc_dist_nel = as.matrix((vegdist(ne.lakes.ASV, "bray"))) 
+NMDS_nel = metaMDS(bc_dist_nel, k=3, trymax=100)
+NMDS1_nel=NMDS_nel$points[,1]
+NMDS2_nel=NMDS_nel$points[,2]
+NMDS.df.nel=data.frame(NMDS1=NMDS1_nel, 
+                        NMDS2=NMDS2_nel, 
+                        location=notexp.df[notexp.df$location %in% c('Warm Lake','June Lake', 'Twin Lakes', 'Twin Lakes BP',  'Crowley Lake'),4],
+                        loc_type=notexp.df[notexp.df$loc_type %in% c('lake'),5])
+
+loc_type.nel.group<-NMDS.df.nel$loc_type
+location.nel.group<-NMDS.df.nel$location
+
+nel.colors =  c("#E41A1C", "#FF7F00", "#984EA3","#377EB8", "#4DAF4A" , "#A65628", "#1B9E77", "#F781BF", "#999999")
+##plot sites.streams
+ordiplot(NMDS_nel, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.8, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS_nel, "sites", cex=0.8, pch=17, col=nel.colors[location.nel.group])
+ordiellipse(NMDS_nel, groups=location.nel.group, kind="sd", draw="polygon", 
+            border= nel.colors, conf=0.95, alpha=30)
+legend(x=0.5, y=0.6, legend=levels(location.nel.group), cex=0.9, col=nel.colors, pch=17, pt.cex=0.8, bty="n", 
+       inset=c(0.4,0.05), x.intersp = 1.2, y.intersp = 0.6)
+
+dev.copy(pdf, "figures/stat_tests/NMDS.sites.lakes.pdf", height=7, width=8)
+dev.off()
+
+
+
+
+
+
+######### exp.streams
+e.streams.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X %in% c('363','364','365','370','483','484','489','490','491','492','493','501','504','507','519','524','532'),]
+
+exp.df = data.frame (sample_data(exp.streams))
+exp.df$loc_type <- as.factor(exp.df$loc_type)
+exp.df$location <- as.factor(exp.df$location)
+exp.df$mesocosm <- as.factor(exp.df$mesocosm)
+
+bc_dist_est = as.matrix((vegdist(e.streams.ASV, "bray"))) 
+NMDS_est = metaMDS(bc_dist_est, k=3, trymax=100)
+NMDS1_est=NMDS_est$points[,1]
+NMDS2_est=NMDS_est$points[,2]
+NMDS.df.est=data.frame(NMDS1=NMDS1_est, 
+                      NMDS2=NMDS2_est,
+                      loc_type=exp.df[exp.df$loc_type %in% c('stream'),5],
+                      mesocosm=exp.df[,'mesocosm'])
+
+loc_type.est.group<-NMDS.df.est$loc_type
+mesocosm.est.group<-NMDS.df.est$mesocosm
+
+##plot exp.streams
+ordiplot(NMDS_est, type="n", main=substitute(paste("")), cex.main=0.5, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.0001, 0.0001))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS_est, "sites", cex=1.0, pch=17, col=new.colors[mesocosm.est.group])
+ordiellipse(NMDS_est, groups=mesocosm.est.group, kind="sd", draw="polygon", 
+            border= new.colors, conf=0.95, alpha=30)
+legend(x=0.5, y=0.6, legend=levels(mesocosm.est.group), cex=0.75, col=new.colors, pch=17, pt.cex=0.8, bty="n", 
+       inset=c(0.4,0.05), x.intersp = 1.2, y.intersp = 0.6)
+
+dev.copy(pdf, "figures/stat_tests/NMDS.exp.streams.pdf", height=7, width=8)
+dev.off()
+
+######LMAO NOPE - points overlap
+
+####### NMDS.exp.lakes
+el.colors =  c("#E41A1C", "#377EB8", "#4DAF4A" ,"#984EA3" ,"#FF7F00" , "#A65628", "#1B9E77", "#F781BF", "#999999", "#7570B3", "#E6AB02")
+e.lakes.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X %in% c('447', '448','451','453','454','455','457','459','460','461','463','464','466','467','468','469','470','471','472','473','474','479','481'),]
+
+exp.df = data.frame (sample_data(exp.lakes))
+exp.df$loc_type <- as.factor(exp.df$loc_type)
+exp.df$location <- as.factor(exp.df$location)
+exp.df$mesocosm <- as.factor(exp.df$mesocosm)
+
+bc_dist_el = as.matrix((vegdist(e.lakes.ASV, "bray"))) 
+NMDS_el = metaMDS(bc_dist_el, k=3, trymax=100)
+NMDS1_el=NMDS_el$points[,1]
+NMDS2_el=NMDS_el$points[,2]
+NMDS.df.el=data.frame(NMDS1=NMDS1_el, 
+                      NMDS2=NMDS2_el,
+                      loc_type=exp.df[exp.df$loc_type %in% c('lake'),5],
+                      mesocosm=exp.df[,'mesocosm'])
+
+loc_type.el.group<-NMDS.df.el$loc_type
+mesocosm.el.group<-NMDS.df.el$mesocosm
+
+##plot exp.streams
+ordiplot(NMDS_el, type="n", main=substitute(paste("")), cex.main=0.5, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.2, 0.2))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS_el, "sites", cex=1.0, pch=17, col=el.colors[mesocosm.el.group])
+ordiellipse(NMDS_el, groups=mesocosm.el.group, kind="sd", draw="polygon", 
+            border= el.colors, conf=0.95, alpha=30)
+legend(x=0.2, y=0.15, legend=levels(mesocosm.el.group), cex=0.9, col=el.colors, pch=17, pt.cex=0.8, bty="n", 
+       inset=c(0.4,0.05), x.intersp = 1.2, y.intersp = 0.6)
+
+dev.copy(pdf, "figures/stat_tests/NMDS.exp.lakes.pdf", height=7, width=8)
+dev.off()
+
+
+
+
+
+```
+
+```{r alpha diversity}
+sort(rowSums(otu_table(ps.rare))) #reads
+div<-estimate_richness(ps.rare, split = TRUE, measures = NULL)
+
+# plot it
+alpha.diversity<-plot_richness(ps.rare, x="location", measures=c("Observed", "Shannon", "Simpson"))
+
+boxplot.alpha.diversity <- alpha.diversity + 
+  geom_boxplot(data = alpha.diversity$data, aes(x = location, y = value, fill=location), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(10, "Set3")) + 
+  theme(axis.text.x = element_text(angle = 300, vjust=.5))
+
+boxplot.alpha.diversity
+dev.copy(pdf, "figures/boxplot.alpha.diversity.pdf", height=5, width=15)
+dev.off() 
+
+```
+
+```{r alpha diversity edited}
+sort(rowSums(otu_table(ps.rare.new))) #reads
+rich<-estimate_richness(ps.rare.new, split = TRUE, measures = NULL)
+
+# plot it
+alpha.diversity<-plot_richness(ps.rare.new, x="loc_type", measures=c("Observed", "Shannon", "Simpson"))
+
+boxplot.richness<- alpha.diversity + 
+  geom_boxplot(data = alpha.diversity$data, aes(x = loc_type, y = value, fill=loc_type), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(4, "BrBG")) +
+  ggtitle("Alpha Diversity of Sites and Experimental Mesocosms by Habitat Type") +
+  theme_classic()   
+
+boxplot.richness
+dev.copy(pdf, "figures/stat_tests/boxplot.alpha.pdf", height=5, width=7)
+dev.off() 
+
+
+
+
+##exp
+class(exp)
+ps.exp <-phyloseq(otu_table(ps.rare.new@otu_table, taxa_are_rows=FALSE),
+              sample_data(exp), 
+              tax_table(ps.rare.new@tax_table))
+saveRDS(ps.exp, file="output/ps.exp.rds")
+sort(rowSums(otu_table(ps.exp))) #reads
+rich.exp<-estimate_richness(ps.exp, split = TRUE, measures = NULL)
+
+# plot it
+alpha.diversity.exp<-plot_richness(ps.exp, x="loc_type", measures=c("Observed", "Shannon", "Simpson"))
+
+boxplot.richness.exp<- alpha.diversity.exp + 
+  geom_boxplot(data = alpha.diversity.exp$data, aes(x = loc_type, y = value, fill=loc_type), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(4, "BrBG")) +
+  ggtitle("Alpha Diversity of Experimental Mesocosms by Habitat Type") +
+  theme_classic()   
+boxplot.richness.exp
+
+dev.copy(pdf, "figures/stat_tests/boxplot.alpha.exp.pdf", height=5, width=7)
+dev.off() 
+
+
+
+
+##notexp
+
+ps.notexp <-phyloseq(otu_table(ps.rare.new@otu_table, taxa_are_rows=FALSE),
+              sample_data(notexp), 
+              tax_table(ps.rare.new@tax_table))
+saveRDS(ps.notexp, file="output/ps.notexp.rds")
+
+sort(rowSums(otu_table(ps.notexp))) #reads
+rich.notexp<-estimate_richness(ps.notexp, split = TRUE, measures = NULL)
+
+# plot it
+alpha.diversity.notexp<-plot_richness(ps.notexp, x="loc_type", measures=c("Observed", "Shannon", "Simpson"))
+
+boxplot.richness.notexp <- alpha.diversity.notexp + 
+  geom_boxplot(data = alpha.diversity.notexp$data, aes(x = loc_type, y = value, fill=loc_type), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(4, "BrBG")) +
+  ggtitle("Alpha Diversity of Sites by Habitat Type") +
+  theme_classic()   
+boxplot.richness.notexp
+
+dev.copy(pdf, "figures/stat_tests/boxplot.alpha.notexp.pdf", height=5, width=7)
+dev.off() 
+
+
+
+##save all 3 plots to one pdf##
+
+#specify path to save PDF to
+destination = 'figures/stat_tests/boxplot.alpha.3.pdf'
+#open PDF
+pdf(file=destination)
+
+plot(boxplot.richness)
+plot(boxplot.richness.exp) 
+plot(boxplot.richness.notexp)
+
+#turn off PDF plotting
+dev.off() 
+
+```
+
+```{r PCoA and NMDS}
+############ PCoA
+
+all_pcoa <- ordinate(
+  physeq = ps.rare.new, 
+  method = "PCoA", 
+  distance = "bray"
+)
+
+PCoA.ord.plot<-plot_ordination(
+  physeq = ps.rare.new,                                                       
+  ordination = all_pcoa)+                                                
+  geom_point(aes(fill = location, shape = loc_type), size = 3) +  
+  stat_ellipse(type = "norm", linetype = 2, aes(color=location)) +
+  scale_shape_manual(values = c(21, 22, 23, 24)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = col_vector, guide="none") +
+  theme_classic() +                                                      
+  theme(                             
+    legend.text = element_text(size = 12),                               
+    legend.title = element_blank(),                                      
+    legend.background = element_rect(fill = "white", color = "NA"))+  
+  theme(axis.text.y.left = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))+
+  guides(fill = guide_legend(override.aes = list(shape = 21))) 
+
+PCoA.ord.plot
+dev.copy(pdf, "figures/PCoA.pdf", height=7, width=10)
+dev.off() 
+
+
+############ NMDS
+# set k=3 to improve fit with metaMDS
+
+all_NMDS <- ordinate(
+  physeq = ps.rare.new, 
+  method = "NMDS", k=3,
+  distance = "bray"
+)
+
+NMDS.site.year.df<-plot_ordination(
+  physeq = ps.rare.new,                                                       
+  ordination = all_NMDS, justDF=TRUE)
+# by setting just"df" you get the dataframe that made the plot -- useful if need to hard-code
+
+NMDS.ord.plot<-plot_ordination(
+  physeq = ps.rare.new,                                                       
+  ordination = all_NMDS) +                                              
+  geom_point(aes(fill = location, shape = year), size = 3) + 
+  stat_ellipse(type = "norm", linetype = 2, aes(color=location)) +
+  scale_shape_manual(values = c(21, 22, 23, 24)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = col_vector, guide="none") +
+  theme_classic() +                                                       
+  theme(                             
+    legend.text = element_text(size = 12),                               
+    legend.title = element_blank(),                                     
+    legend.background = element_rect(fill = "white", color = "NA"))+  
+  theme(axis.text.y.left = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))+
+  guides(fill = guide_legend(override.aes = list(shape = 21))) 
+
+
+NMDS.ord.plot
+dev.copy(pdf, "figures/NMDS.pdf", height=7, width=10)
+dev.off() 
+
+############ plot by year PCoA and NMDS
+
+PCoA.ord.plot.notexp<-plot_ordination(
+  physeq = ps_notexp,                                                   
+  ordination = all_pcoa, color="location") +                                                
+  geom_point(aes(color = location), size = 3) +    
+  stat_ellipse(type = "norm", linetype = 2, aes(color=location)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = brewer.pal(9, "Set3")) +
+  theme_classic()                                                      
+ 
+PCoA.ord.plot.notexp
+dev.copy(pdf, "figures/PCoA.notexp.location.pdf", height=6, width=7)
+dev.off() 
+
+
+NMDS.ord.plot.notexp<-plot_ordination(
+  physeq = ps_notexp,                                                   
+  ordination = all_NMDS, color="location") +                                                
+  geom_point(aes(color = location), size = 3) +    
+  stat_ellipse(type = "norm", linetype = 2, aes(color=location)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = brewer.pal(4, "BrBG")) +
+  theme_classic()                                                      
+ 
+NMDS.ord.plot.loc_type
+dev.copy(pdf, "figures/NMDS.notexp.location.pdf", height=6, width=7)
+dev.off() 
+
+
+
+```
+
+```{r PCoA and NMDS edited}
+
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+new.colors =  c("#E41A1C", "#377EB8", "#4DAF4A" ,"#984EA3" ,"#FF7F00" , "#A65628", "#F781BF", "#999999", "#E6AB02", "#E7298A","#1B9E77", "#D95F02", "#7570B3",  "#66A61E", "#A6761D", "#666666")
+
+############ PCoA
+
+all_pcoa <- ordinate(
+  physeq = ps.rare.new, 
+  method = "PCoA", 
+  distance = "bray"
+)
+
+PCoA.ord.plot<-plot_ordination(
+  physeq = ps.rare.new,                                                       
+  ordination = all_pcoa)+                                                
+  geom_point(aes(fill = location, shape = loc_type), size = 3) +  
+  stat_ellipse(type = "norm", linetype = 2, aes(color=location)) +
+  scale_shape_manual(values = c(21, 22, 23, 24)) +
+  scale_fill_manual(values = new.colors) +
+  scale_color_manual(values = new.colors, guide="none") +
+  theme_classic() +                                                      
+  theme(                             
+    legend.text = element_text(size = 12),                               
+    legend.title = element_blank(),                                      
+    legend.background = element_rect(fill = "white", color = "NA"))+  
+  theme(axis.text.y.left = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))+
+  guides(fill = guide_legend(override.aes = list(shape = 21))) 
+
+PCoA.ord.plot
+dev.copy(pdf, "figures/stat_tests/PCoA.ord.plot.pdf", height=7, width=10)
+dev.off() 
+
+
+
+
+
+#### with ps.notexp
+sites_pcoa <- ordinate(
+  physeq = ps.notexp, 
+  method = "PCoA", 
+  distance = "bray"
+)
+
+PCoA.ord.plot.sites<-plot_ordination(
+  physeq = ps.notexp,                                                       
+  ordination = sites_pcoa)+                                                
+  geom_point(aes(fill = location, shape = loc_type), size = 3) +  
+  stat_ellipse(type = "norm", linetype = 2, aes(color=location)) +
+  scale_shape_manual(values = c(21, 22, 23, 24)) +
+  scale_fill_manual(values = new.colors) +
+  scale_color_manual(values = new.colors, guide="none") +
+  theme_classic() +                                                      
+  theme(                             
+    legend.text = element_text(size = 12),                               
+    legend.title = element_blank(),                                      
+    legend.background = element_rect(fill = "white", color = "NA"))+  
+  theme(axis.text.y.left = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))+
+  guides(fill = guide_legend(override.aes = list(shape = 21))) 
+
+PCoA.ord.plot.sites
+dev.copy(pdf, "figures/stat_tests/PCoA.ord.plot.sites.pdf", height=7, width=10)
+dev.off() 
+
+
+
+
+#### with ps.exp
+exp_pcoa <- ordinate(
+  physeq = ps.exp, 
+  method = "PCoA", 
+  distance = "bray"
+)
+
+PCoA.ord.plot.exp<-plot_ordination(
+  physeq = ps.exp,                                                       
+  ordination = exp_pcoa)+                                                
+  geom_point(aes(fill = loc_type, shape = loc_type), size = 3) +  
+  stat_ellipse(type = "norm", linetype = 2, aes(color=loc_type)) +
+  scale_shape_manual(values = c(21, 22, 23, 24)) +
+  scale_fill_manual(values = new.colors) +
+  scale_color_manual(values = new.colors, guide="none") +
+  theme_classic() +                                                      
+  theme(                             
+    legend.text = element_text(size = 12),                               
+    legend.title = element_blank(),                                      
+    legend.background = element_rect(fill = "white", color = "NA"))+  
+  theme(axis.text.y.left = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))+
+  guides(fill = guide_legend(override.aes = list(shape = 21))) 
+
+PCoA.ord.plot.exp
+dev.copy(pdf, "figures/stat_tests/PCoA.ord.plot.exp.pdf", height=7, width=10)
+dev.off() 
+
+
+#### with sites.streams
+sites.streams_pcoa <- ordinate(
+  physeq = sites.streams, 
+  method = "PCoA", 
+  distance = "bray"
+)
+
+PCoA.ord.plot.sites.streams<-plot_ordination(
+  physeq = sites.streams,                                                       
+  ordination = sites.streams_pcoa)+                                                
+  geom_point(aes(fill = location, shape = loc_type), size = 3) +  
+  stat_ellipse(type = "norm", linetype = 2, aes(color=location)) +
+  scale_shape_manual(values = c(21, 22, 23, 24)) +
+  scale_fill_manual(values = new.colors) +
+  scale_color_manual(values = new.colors, guide="none") +
+  theme_classic() +                                                      
+  theme(                             
+    legend.text = element_text(size = 12),                               
+    legend.title = element_blank(),                                      
+    legend.background = element_rect(fill = "white", color = "NA"))+  
+  theme(axis.text.y.left = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))+
+  guides(fill = guide_legend(override.aes = list(shape = 21))) 
+
+PCoA.ord.plot.sites.streams
+dev.copy(pdf, "figures/stat_tests/PCoA.ord.plot.sites.streams.pdf", height=7, width=10)
+dev.off() 
+
+
+
+#### with sites.lakes
+sites.lakes_pcoa <- ordinate(
+  physeq = sites.lakes, 
+  method = "PCoA", 
+  distance = "bray"
+)
+
+PCoA.ord.plot.sites.lakes<-plot_ordination(
+  physeq = sites.lakes,                                                       
+  ordination = sites.lakes_pcoa)+                                                
+  geom_point(aes(fill = location, shape = loc_type), size = 3) +  
+  stat_ellipse(type = "norm", linetype = 2, aes(color=location)) +
+  scale_shape_manual(values = c(21, 22, 23, 24)) +
+  scale_fill_manual(values = new.colors) +
+  scale_color_manual(values = new.colors, guide="none") +
+  theme_classic() +                                                      
+  theme(                             
+    legend.text = element_text(size = 12),                               
+    legend.title = element_blank(),                                      
+    legend.background = element_rect(fill = "white", color = "NA"))+  
+  theme(axis.text.y.left = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))+
+  guides(fill = guide_legend(override.aes = list(shape = 21))) 
+
+PCoA.ord.plot.sites.lakes
+dev.copy(pdf, "figures/stat_tests/PCoA.ord.plot.sites.lakes.pdf", height=7, width=10)
+dev.off() 
+
+
+
+
+
+############ NMDS
+# set k=3 to improve fit with metaMDS
+
+all_NMDS <- ordinate(
+  physeq = ps.rare.new, 
+  method = "NMDS", k=3,
+  distance = "bray"
+)
+
+NMDS.location.loc_type.df<-plot_ordination(
+  physeq = ps.rare.new,                                                       
+  ordination = all_NMDS, justDF=TRUE)
+# by setting just"df" you get the dataframe that made the plot -- useful if need to hard-code
+
+NMDS.ord.plot<-plot_ordination(
+  physeq = ps.rare.new,                                                       
+  ordination = all_NMDS) +                                              
+  geom_point(aes(fill = location, shape = loc_type), size = 3) + 
+  stat_ellipse(type = "norm", linetype = 2, aes(color=location)) +
+  scale_shape_manual(values = c(21, 22, 23, 24)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = col_vector, guide="none") +
+  theme_classic() +                                                       
+  theme(                             
+    legend.text = element_text(size = 12),                               
+    legend.title = element_blank(),                                     
+    legend.background = element_rect(fill = "white", color = "NA"))+  
+  theme(axis.text.y.left = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))+
+  guides(fill = guide_legend(override.aes = list(shape = 21))) 
+
+
+NMDS.ord.plot
+dev.copy(pdf, "figures/stat_tests/NMDS.ord.plot.all.pdf", height=7, width=10)
+dev.off() 
+
+############ plot by year PCoA and NMDS
+
+PCoA.ord.plot.year<-plot_ordination(
+  physeq = ps.rare.new,                                                   
+  ordination = all_pcoa, color="year") +                                                
+  geom_point(aes(color = year), size = 3) +    
+  stat_ellipse(type = "norm", linetype = 2, aes(color=year)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = brewer.pal(4, "BrBG")) +
+  theme_classic()                                                      
+ 
+PCoA.ord.plot.year
+dev.copy(pdf, "figures/stat_tests/PCoA.year.pdf", height=6, width=7)
+dev.off() 
+
+
+NMDS.ord.plot.year<-plot_ordination(
+  physeq = ps.rare,                                                   
+  ordination = all_NMDS, color="year") +                                                
+  geom_point(aes(color = year), size = 3) +    
+  stat_ellipse(type = "norm", linetype = 2, aes(color=year)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = brewer.pal(4, "BrBG")) +
+  theme_classic()                                                      
+ 
+NMDS.ord.plot.year
+dev.copy(pdf, "figures/NMDS.year.pdf", height=6, width=7)
+dev.off() 
+
+
+
+```
+
+```{r alpha richness}
+# inspect # of reads
+sort(rowSums(otu_table(ps.rare))) #reads
+rich<-estimate_richness(ps.rare, split = TRUE, measures = NULL)
+
+# plot it
+alpha.richness<-plot_richness(ps.rare, x="location", measures=c("Observed", "Shannon", "Simpson"))
+
+boxplot.alpha.richness<- alpha.richness + 
+  geom_boxplot(data = alpha.richness$data, aes(x = location, y = value, fill=location), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(10, "Set3")) +
+  theme(axis.text.x = element_text(angle = 300, vjust=.5)) 
+
+boxplot.alpha.richness
+ggsave(filename = "figures/boxplot.alpha.richness.pdf", plot = boxplot.alpha.richness, height=5, width=7)
+dev.off() 
+
+```
+
+```{r hardcode NMDS, eval=FALSE}
+
+# plotting elements
+year.group<-NMDS.ord.plot.year$year
+site.group<-NMDS.ord.plot.year$site
+# make colors for year
+year.col<-brewer.pal(4, "BrBG")
+
+# make colors for sites
+library(RColorBrewer)
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+
+
+### make plot by habitat with vectors for environment
+ordiplot(NMDS, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.6, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS, "sites", cex=0.8, pch=16, col=year.col[year.group])
+ordiellipse(NMDS, groups=year.group, kind="sd", draw="polygon", border=year.col, conf=0.95, alpha=30)
+legend("topright", legend=levels(year.group), cex=1, col=year.col, pch=16, pt.cex=1, bty="n")
+
+dev.copy(pdf, "figures/NMDS.year.pdf", height=5.5, width=6)
+dev.off() 
+
+```
+
+```{r hardcode NMDS edited, eval=FALSE}
+
+# plotting elements
+year.group<-NMDS.ord.plot.year$year
+site.group<-NMDS.ord.plot.year$site
+# make colors for year
+year.col<-brewer.pal(4, "BrBG")
+
+# make colors for sites
+library(RColorBrewer)
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+
+
+### make plot by habitat with vectors for environment
+ordiplot(NMDS, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.6, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS, "sites", cex=0.8, pch=16, col=year.col[year.group])
+ordiellipse(NMDS, groups=year.group, kind="sd", draw="polygon", border=year.col, conf=0.95, alpha=30)
+legend("topright", legend=levels(year.group), cex=1, col=year.col, pch=16, pt.cex=1, bty="n")
+
+dev.copy(pdf, "figures/NMDS.year.pdf", height=5.5, width=6)
+dev.off() 
+
+```
+
+
+
+
+#copy paste from plant microbiomes 
+
+```{r PERMANOVA bac}
+
+##PERMANOVA Bacteria
+PS_normal = readRDS("data/PS_normal.gz")
+PS_normal=transform_sample_counts(PS_normal, function(x) x^0.5)
+
+PS_normal = subset_taxa(PS_normal, c(
+                          Order!="Chloroplast", 
+                          Kingdom!="Archaea",
+                          Family!="Mitochondria",
+                          Kingdom!="Unknown",
+                          Kingdom!="Eukaryota"))
+
+
+#Use base boxplot functin to look at sequencing depth
+#boxplot(sample_sums(PS_normal)~sample_data(PS_normal)$FieldSite)
+#boxplot(sample_sums(PS_normal)~sample_data(PS_normal)$SampleType)
+
+#Bacterial ALL
+Site <- as.factor(PS_normal@sam_data$FieldSite)
+Sample_Type <- PS_normal@sam_data$SampleType
+bact_ps <- phyloseq::distance(PS_normal, method="bray") #Normalized bact data - phyloseq-class
+bact_meta_all = as(sample_data(PS_normal), "data.frame") #Extract sample data and coerce to df
+
+bact_meta_all$Ground_Type<-factor(ifelse(bact_meta_all$SampleType=="Air" | 
+                                     bact_meta_all$SampleType=="Axil"| 
+                                     bact_meta_all$SampleType=="Leaf" |  
+                                     bact_meta_all$SampleType=="Litter" |
+                                     bact_meta_all$SampleType=="Stem" | 
+                                     bact_meta_all$SampleType=="Petiole", "Above.ground",
+                              "Below.ground"))
+
+bact_all = adonis(bact_ps ~ Site  + Sample_Type, by = "margin", data = bact_meta_all, permutations = 10000)
+bact_all
+
+capture.output(bact_all, file="output/bact_all.permanova.csv")
+
+bact_ab.bl = adonis(bact_ps ~ Ground_Type, by = "margin", data = bact_meta_all, permutations = 10000)
+bact_ab.bl
+
+capture.output(bact_ab.bl, file="output/bact_ab.bl.permanova.csv")
+
+```
+
+
+
+

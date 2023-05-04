@@ -1,0 +1,84 @@
+"","X","id","date","location","loc_type","mesocosm","taxa","putative.subspecies","controls","sample_control","weight_g","length_mm","gutlength_mm","year","is.neg"
+"tui_10",7,"tui_10","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",37.1,119,NA,"2019",FALSE
+"tui_11",8,"tui_11","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",28.3,113,NA,"2019",FALSE
+"tui_12",9,"tui_12","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",40.9,123,NA,"2019",FALSE
+"tui_122",45,"tui_122","7/27/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",15.1,91,NA,"2019",FALSE
+"tui_123",46,"tui_123","7/28/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",47.5,130,NA,"2019",FALSE
+"tui_124",47,"tui_124","7/28/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",68.8,145,NA,"2019",FALSE
+"tui_125",48,"tui_125","7/28/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",32.9,116,NA,"2019",FALSE
+"tui_129",49,"tui_129","7/28/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",21.6,96,NA,"2019",FALSE
+"tui_130",50,"tui_130","7/28/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",28,105,NA,"2019",FALSE
+"tui_132",51,"tui_132","7/28/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",26.1,108,NA,"2019",FALSE
+"tui_133",52,"tui_133","7/28/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",16.3,90,NA,"2019",FALSE
+"tui_135",53,"tui_135","7/28/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",16.7,93,NA,"2019",FALSE
+"tui_136",54,"tui_136","7/28/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",13.8,85,NA,"2019",FALSE
+"tui_137",55,"tui_137","7/28/2019","Layton Springs","stream",NA,"Tui Chub","Hybrid","","samples",11.9,79,NA,"2019",FALSE
+"tui_15",11,"tui_15","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",23.2,103,131,"2019",FALSE
+"tui_152",58,"tui_152","8/2/2019","Twin Lakes BP","lake",NA,"Lahontan Redside","none","","samples",11.6,90,NA,"2019",FALSE
+"tui_153",59,"tui_153","8/2/2019","Twin Lakes BP","lake",NA,"Lahontan Redside","none","","samples",4,64,NA,"2019",FALSE
+"tui_17",13,"tui_17","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",9.7,75,85,"2019",FALSE
+"tui_18",14,"tui_18","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",20.5,95,102,"2019",FALSE
+"tui_202",62,"tui_202","8/8/2019","Warm Lake","lake",NA,"Tui Chub","Hybrid","","samples",15.8,92,NA,"2019",FALSE
+"tui_204",63,"tui_204","8/8/2019","Warm Lake","lake",NA,"Tui Chub","Hybrid","","samples",8.8,74,NA,"2019",FALSE
+"tui_21",17,"tui_21","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",10.6,79,88,"2019",FALSE
+"tui_247",64,"tui_247","8/9/2019","Crowley Lake","lake",NA,"Tui Chub","Hybrid","","samples",20.9,102,NA,"2019",FALSE
+"tui_248",65,"tui_248","8/10/2019","Crowley Lake","lake",NA,"Tui Chub","Hybrid","","samples",10.8,79,NA,"2019",FALSE
+"tui_261",66,"tui_261","8/11/2019","Crowley Lake","lake",NA,"Tui Chub","Hybrid","","samples",26.2,104,NA,"2019",FALSE
+"tui_297",72,"tui_297","8/19/2019","McNally Canal","stream",NA,"Tui Chub","Hybrid","","samples",25.2,103,NA,"2019",FALSE
+"tui_3",2,"tui_3","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",46.9,119,129,"2019",FALSE
+"tui_31",18,"tui_31","7/24/2019","June Lake","lake",NA,"Tui Chub","Hybrid","","samples",42.1,129,NA,"2019",FALSE
+"tui_32",19,"tui_32","7/24/2019","June Lake","lake",NA,"Tui Chub","Hybrid","","samples",49.5,139,NA,"2019",FALSE
+"tui_36",20,"tui_36","7/24/2019","June Lake","lake",NA,"Tui Chub","Hybrid","","samples",98.2,176,NA,"2019",FALSE
+"tui_363",78,"tui_363","8/25/2019","Experiment","stream",5,"Tui Chub","Hybrid","","samples",10.6,91,NA,"2019",FALSE
+"tui_364",79,"tui_364","8/25/2019","Experiment","stream",6,"Tui Chub","Hybrid","","samples",26.9,117,NA,"2019",FALSE
+"tui_365",80,"tui_365","8/25/2019","Experiment","stream",7,"Tui Chub","Hybrid","","samples",58.5,155,NA,"2019",FALSE
+"tui_370",82,"tui_370","8/25/2019","Experiment","stream",11,"Tui Chub","Hybrid","","samples",12,95,NA,"2019",FALSE
+"tui_382",85,"tui_382","8/31/2019","Mammoth Creek","stream",NA,"Tui Chub","Hybrid","","samples",14.5,90,NA,"2019",FALSE
+"tui_39",22,"tui_39","7/24/2019","June Lake","lake",NA,"Tui Chub","Hybrid","","samples",89.3,174,NA,"2019",FALSE
+"tui_410",86,"tui_410","9/2/2019","Twin Lakes BP","lake",NA,"Tui Chub","Lahontan","","samples",29,122,NA,"2019",FALSE
+"tui_44",26,"tui_44","7/24/2019","June Lake","lake",NA,"Tui Chub","Hybrid","","samples",103.8,169,NA,"2019",FALSE
+"tui_447",90,"tui_447","9/12/2019","Experiment","lake",1,"Tui Chub","Hybrid","","samples",19.3,108,NA,"2019",FALSE
+"tui_448",91,"tui_448","9/12/2019","Experiment","lake",1,"Tui Chub","Hybrid","","samples",11.1,89,NA,"2019",FALSE
+"tui_451",94,"tui_451","9/12/2019","Experiment","lake",2,"Tui Chub","Hybrid","","samples",42.3,140,NA,"2019",FALSE
+"tui_453",96,"tui_453","9/12/2019","Experiment","lake",6,"Tui Chub","Hybrid","","samples",48.2,145,NA,"2019",FALSE
+"tui_454",97,"tui_454","9/12/2019","Experiment","lake",6,"Tui Chub","Hybrid","","samples",44.7,145,NA,"2019",FALSE
+"tui_455",98,"tui_455","9/12/2019","Experiment","lake",7,"Tui Chub","Hybrid","","samples",46.7,147,NA,"2019",FALSE
+"tui_457",99,"tui_457","9/12/2019","Experiment","lake",7,"Tui Chub","Hybrid","","samples",35.1,127,NA,"2019",FALSE
+"tui_459",101,"tui_459","9/12/2019","Experiment","lake",8,"Tui Chub","Hybrid","","samples",18.6,100,NA,"2019",FALSE
+"tui_460",102,"tui_460","9/12/2019","Experiment","lake",8,"Tui Chub","Hybrid","","samples",13.8,94,NA,"2019",FALSE
+"tui_461",103,"tui_461","9/12/2019","Experiment","lake",9,"Tui Chub","Hybrid","","samples",12.3,94,NA,"2019",FALSE
+"tui_463",105,"tui_463","9/12/2019","Experiment","lake",9,"Tui Chub","Hybrid","","samples",18,103,NA,"2019",FALSE
+"tui_464",106,"tui_464","9/12/2019","Experiment","lake",10,"Tui Chub","Hybrid","","samples",25.9,116,NA,"2019",FALSE
+"tui_466",107,"tui_466","9/12/2019","Experiment","lake",10,"Tui Chub","Hybrid","","samples",35.3,130,NA,"2019",FALSE
+"tui_467",108,"tui_467","9/12/2019","Experiment","lake",11,"Tui Chub","Hybrid","","samples",22.6,111,NA,"2019",FALSE
+"tui_468",109,"tui_468","9/12/2019","Experiment","lake",11,"Tui Chub","Hybrid","","samples",24.8,113,NA,"2019",FALSE
+"tui_469",110,"tui_469","9/12/2019","Experiment","lake",11,"Tui Chub","Hybrid","","samples",21.3,106,NA,"2019",FALSE
+"tui_47",28,"tui_47","7/24/2019","June Lake","lake",NA,"Tui Chub","Hybrid","","samples",125.6,190,NA,"2019",FALSE
+"tui_470",111,"tui_470","9/12/2019","Experiment","lake",12,"Tui Chub","Hybrid","","samples",26.6,118,NA,"2019",FALSE
+"tui_471",112,"tui_471","9/12/2019","Experiment","lake",12,"Tui Chub","Hybrid","","samples",15.3,98,NA,"2019",FALSE
+"tui_472",113,"tui_472","9/12/2019","Experiment","lake",12,"Tui Chub","Hybrid","","samples",19,108,NA,"2019",FALSE
+"tui_473",114,"tui_473","9/12/2019","Experiment","lake",13,"Tui Chub","Hybrid","","samples",25.2,112,NA,"2019",FALSE
+"tui_474",115,"tui_474","9/12/2019","Experiment","lake",13,"Tui Chub","Hybrid","","samples",15,94,NA,"2019",FALSE
+"tui_479",116,"tui_479","9/12/2019","Experiment","lake",18,"Tui Chub","Hybrid","","samples",20.7,103,NA,"2019",FALSE
+"tui_481",118,"tui_481","9/12/2019","Experiment","lake",18,"Tui Chub","Hybrid","","samples",45.1,145,NA,"2019",FALSE
+"tui_483",120,"tui_483","9/17/2019","Experiment","stream",2,"Tui Chub","Hybrid","","samples",16,102,NA,"2019",FALSE
+"tui_484",121,"tui_484","9/17/2019","Experiment","stream",2,"Tui Chub","Hybrid","","samples",15.3,98,NA,"2019",FALSE
+"tui_489",125,"tui_489","9/17/2019","Experiment","stream",3,"Tui Chub","Hybrid","","samples",40,135,NA,"2019",FALSE
+"tui_49",29,"tui_49","7/24/2019","June Lake","lake",NA,"Tui Chub","Hybrid","","samples",107.9,171,NA,"2019",FALSE
+"tui_490",126,"tui_490","9/17/2019","Experiment","stream",3,"Tui Chub","Hybrid","","samples",30,116,NA,"2019",FALSE
+"tui_491",127,"tui_491","9/17/2019","Experiment","stream",3,"Tui Chub","Hybrid","","samples",44.1,140,NA,"2019",FALSE
+"tui_492",128,"tui_492","9/17/2019","Experiment","stream",5,"Tui Chub","Hybrid","","samples",27,120,NA,"2019",FALSE
+"tui_493",129,"tui_493","9/17/2019","Experiment","stream",5,"Tui Chub","Hybrid","","samples",34,131,NA,"2019",FALSE
+"tui_501",131,"tui_501","9/17/2019","Experiment","stream",6,"Tui Chub","Hybrid","","samples",47.9,136,NA,"2019",FALSE
+"tui_504",132,"tui_504","9/17/2019","Experiment","stream",7,"Tui Chub","Hybrid","","samples",23.4,114,NA,"2019",FALSE
+"tui_507",134,"tui_507","9/17/2019","Experiment","stream",8,"Tui Chub","Hybrid","","samples",31.9,116,NA,"2019",FALSE
+"tui_519",137,"tui_519","9/17/2019","Experiment","stream",12,"Tui Chub","Hybrid","","samples",28,110,NA,"2019",FALSE
+"tui_524",140,"tui_524","9/17/2019","Experiment","stream",14,"Tui Chub","Hybrid","","samples",19.7,103,NA,"2019",FALSE
+"tui_532",141,"tui_532","9/17/2019","Experiment","stream",16,"Tui Chub","Hybrid","","samples",15.2,98,NA,"2019",FALSE
+"tui_6",4,"tui_6","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",15.8,90,NA,"2019",FALSE
+"tui_74",34,"tui_74","7/27/2019","Hot Creek","stream",NA,"Tui Chub","Hybrid","","samples",62.8,143,NA,"2019",FALSE
+"tui_78",37,"tui_78","7/27/2019","Hot Creek","stream",NA,"Tui Chub","Hybrid","","samples",38.7,119,NA,"2019",FALSE
+"tui_8",5,"tui_8","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",9.9,77,91,"2019",FALSE
+"tui_81",39,"tui_81","7/27/2019","Hot Creek","stream",NA,"Tui Chub","Hybrid","","samples",43.2,124,121,"2019",FALSE
+"tui_9",6,"tui_9","7/23/2019","Twin Lakes","lake",NA,"Tui Chub","Hybrid","","samples",23.9,105,111,"2019",FALSE
+"tui_90",44,"tui_90","7/27/2019","Hot Creek","stream",NA,"Tui Chub","Hybrid","","samples",39.5,116,NA,"2019",FALSE

@@ -1,0 +1,1310 @@
+---
+title: "LMB_tui"
+output: html_document
+date: "2022-10-27"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r global options, results="hide", warning=FALSE, message=FALSE}
+if (!require('knitr')) install.packages('knitr'); library('knitr')
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, fig.align='center')
+
+# load packages
+if (!require("pacman")) install.packages("pacman") # for rapid install if not in library
+
+# use pacman to load CRAN packages missing
+pacman::p_load('knitr', 'tidyverse', 'knitr', 'magrittr', 'effects', 'devtools',
+               'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan",
+               "cowplot", "decontam","BiocManager", "dada2", "microbiome")
+
+devtools::install_github("benjjneb/dada2", ref="v1.20") # update to most recent dada2
+
+
+#upload Bioconductor (now BiocManager or R v. > 3.5.0 ), can specify different version in last line
+if (!require("BiocManager", quietly = TRUE))
+install.packages("BiocManager")
+
+#install specific BiocManager packages
+BiocManager::install(c( "Decipher", "phangorn", "phyloseq", "microbiome"), update = TRUE, ask = FALSE)
+```
+
+```{r LoadingPackages, include=FALSE}
+library(phyloseq)
+library(vegan)
+library(DESeq2)
+library(dendextend) 
+library(viridis) 
+library(cowplot)
+library(gridExtra)
+library(ggpubr)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(RColorBrewer)
+pacman::p_load('knitr', 'tidyverse', 'knitr', 'magrittr', 'effects', 'devtools',
+               'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan",
+               "cowplot", "decontam","BiocManager", "dada2", "microbiome")
+```
+
+add in and edit metadata
+
+```{r edit metadata}
+
+# edit metadata
+md<-read.csv("data/TC_metadata.csv")
+
+# factors
+md$date <- as.factor(md$date)
+md$location <- as.factor(md$location)
+md$loc_type <- as.factor(md$loc_type)
+md$mesocosm <- as.factor(md$mesocosm)
+#mesocosm number subset info of stream/lake experiment???
+
+# numerics
+md$weight_g <- as.numeric(md$weight_g)
+md$length_mm <- as.numeric(md$length_mm)
+md$gutlength_mm <- as.numeric(md$gutlength_mm)
+
+# double checking it worked
+class(md$date)
+class(md$weight_g)
+
+
+# ID the controls
+md$pcr_neg[md$pcr_neg=='1'] <- "pcr_neg"
+list(md$pcr_neg)
+md$ext_neg[md$ext_neg=='1'] <- "ext_neg"
+
+#### add this SampleNames to the metadata file
+#S1<-sapply(strsplit(md$submission_sample_ID, "_"), `[`, 2)
+#S2<-sapply(strsplit(md$submission_sample_ID, "_"), `[`, 3)
+#S.name<-sampleNames<-paste(S1,S2)
+#sampleNames<-gsub(" ", "_", S.name) # remove space and add an underscore
+
+md$sample_control<- md$controls
+str(md)
+as.factor(md$sample_control)
+
+md$sample_control[md$sample_control=='']<- "samples"
+
+# ID the - controls
+md$sample_control[md$sample_control=='ext_neg' |
+                 md$sample_control=='pcr_neg' ]  <- "neg.controls"
+
+run.metaD<- md %>% 
+  dplyr::select(id, date,
+                location, loc_type, mesocosm, 
+                taxa, putative.subspecies, controls, sample_control, weight_g,
+                length_mm, gutlength_mm)
+
+make.fac<-c("date", "location", "loc_type", "controls", "sample_control", "mesocosm")
+run.metaD[make.fac] <- lapply(run.metaD[make.fac], factor)
+
+run.metaD$weight_g <- as.numeric(run.metaD$weight_g)
+run.metaD$length_mm <- as.numeric(run.metaD$length_mm)
+run.metaD$gutlength_mm <- as.numeric(run.metaD$gutlength_mm)
+str(run.metaD)
+
+
+### locations split by loc_type without experiments, only experiments by loc_type
+
+
+
+
+
+run.metaD$year <-  sapply(strsplit(run.metaD$date, "/"), `[`, 3)
+run.metaD$month <-  sapply(strsplit(run.metaD$date, "/"), `[`, 1)
+
+
+install.packages("remotes")
+remotes::install_github("david-barnett/microViz")
+
+
+metadata = data.frame (sample_data(ps.rare))
+
+sitemd <- read.csv("data/site_metadata.csv")
+
+md <-  inner_join(metadata, sitemd, by = "location")
+
+psjoin() 
+
+
+
+new.ps.rare <- ps_join(ps.rare, md, by = "id")
+ps.rare
+saveRDS(ps.rare, file="output/ps.rare.rds")
+
+psmelt
+
+
+remotes::install_github("david-barnett/microViz")
+
+
+metadata.fixed <- metadata.fixed[,-18]
+16:29
+metadata.fixed$X <- metadata.fixed$X.x
+
+metadata.fixed <- metadata.fixed %>% 
+         rename(sample_data, "location.x" = "location",
+               "loc_type.x" = "loc_type",
+               "mesocosm.x" = "mesocosm",
+               "taxa.x" = "taxa",
+               "putative.subspecies.x" = "putative.subspecies",
+               "controls.x" = "controls",
+               "sample_control.x" = "sample_control",
+               "weight_g.x" = "Weight_g",
+               "length_mm.x" = "length_mm",
+               "gutlength_mm.x" = "gutlength_mm",
+               "is_neg.x" = "is_neg",
+               "year.x" = "year",
+               "latitude" = "latitude",
+               "longitude" = "longitude",
+               "id" = "id")
+
+colnames(metadata.fixed)[4] ="location"
+colnames(metadata.fixed)[5] ="loc_type"
+colnames(metadata.fixed)[6] ="mesocosm"
+colnames(metadata.fixed)[7] ="taxa"
+colnames(metadata.fixed)[8] ="putative.subspecies"
+colnames(metadata.fixed)[9] ="controls"
+colnames(metadata.fixed)[10] ="sample_control"
+colnames(metadata.fixed)[11] ="weight_g"
+colnames(metadata.fixed)[12] ="length_mm"
+colnames(metadata.fixed)[13] ="gutlength_mm"
+colnames(metadata.fixed)[14] ="year"
+colnames(metadata.fixed)[15] ="is.neg"
+
+metadata.fixed
+
+
+sample_data(ps.rare)
+ps.rare.new <- ps.rare %>%
+  ps_mutate(colnames(sample_data)[4] ="location",
+colnames(sample_data)[5] ="loc_type",
+colnames(sample_data)[6] ="mesocosm",
+colnames(sample_data)[7] ="taxa",
+colnames(sample_data)[8] ="putative.subspecies",
+colnames(sample_data)[9] ="controls",
+colnames(sample_data)[10] ="sample_control",
+colnames(sample_data)[11] ="weight_g",
+colnames(sample_data)[12] ="length_mm",
+colnames(sample_data)[13] ="gutlength_mm",
+colnames(sample_data)[14] ="year",
+colnames(sample_data)[15] ="is.neg")
+
+
+
+ps.rare.new <- ps.rare %>%
+  ps_mutate(rename(sample_data, "location.x" = "location",
+               "loc_type.x" = "loc_type",
+               "mesocosm.x" = "mesocosm",
+               "taxa.x" = "taxa",
+               "putative.subspecies.x" = "putative.subspecies",
+               "controls.x" = "controls",
+               "sample_control.x" = "sample_control",
+               "weight_g.x" = "Weight_g",
+               "length_mm.x" = "length_mm",
+               "gutlength_mm.x" = "gutlength_mm",
+               "is_neg.x" = "is_neg",
+               "year.x" = "year",
+               "latitude" = "latitude",
+               "longitude" = "longitude",
+               "id" = "id"))
+
+
+
+ps.rare.new <- ps.rare %>%
+  ps_mutate(sam_data[,-16:-29])
+
+
+
+
+
+ps.rare.new <-phyloseq(otu_table(ps.rare@otu_table, taxa_are_rows=FALSE),
+              sample_data(metadata.fixed), 
+              tax_table(ps.rare@tax_table))
+
+
+saveRDS(ps.rare.new, file="output/ps.rare.new.rds")
+
+
+
+
+
+# export clean metadata
+write.csv(run.metaD, "data/run.metaD.csv")
+#write.csv(run.metaD[c(1:10),], "data/metadata/16Stest.run.metaD.csv")
+
+##
+
+
+```
+
+filter the trimmed (cut-adapt processed) FASTQ files
+
+```{r filter and trim}
+# read in the names of the fastq files
+# perform some string manipulation to get lists of the forward and reverse fastq in matched order:
+
+
+# load in the cut-adapt samples in the "trimmed" folder
+miseq_path<-"data/trimmed" 
+# CHANGE to the directory containing the fastq files after unzipping.
+list.files(miseq_path)
+
+## Filter and Trim
+### remove low quality reads, trim to consistent length
+
+# Sort ensures forward/reverse reads are in same order
+fnFs <- sort(list.files(miseq_path, pattern="_trimmed_R1.fastq"))
+fnRs <- sort(list.files(miseq_path, pattern="_trimmed_R2.fastq"))
+
+##
+##### had issue here, the way #s reading in not in order with metadata sheet...
+# Extract sample names, assuming filenames have format: SAMPLENAME_XXX.fastq
+
+sampleNames.p2 <- sapply(strsplit(fnFs, "_"), `[`, 1) 
+# extract the run # sampl
+sampleNames.p3 <- sapply(strsplit(fnFs, "_"), `[`, 2)
+
+#sampleNames.p3<-gsub(pattern = "_S.", replacement = "", x = fnFs)
+#sampleNames.p3<-gsub(pattern = "_S..", replacement = "", x = fnFs)
+#sampleNames.p3<-gsub(pattern = "_S...", replacement = "", x =fnFs)
+# extract sample names
+
+
+sampleNames<-paste(sampleNames.p2,sampleNames.p3) # compile
+sampleNames<-gsub(" ", "_", sampleNames)
+# remove space and add an underscore
+
+
+# Specify the full path to the fnFs and fnRs
+fnFs <- file.path(miseq_path, fnFs)
+fnRs <- file.path(miseq_path, fnRs)
+fnFs[1:3]
+```
+
+Inspect quality plot scores. Can then truncate based on quality for reads. The truncating value does not have to be same for F and R.
+
+```{r quality score plots}
+# quality score plot for forward reads
+plotQualityProfile(fnFs[c(5,10)])
+
+# quality score plot for reverse reads
+plotQualityProfile(fnRs[c(2,8)])
+```
+
+```{r export}
+# We define the filenames for the filtered fastq.gz files:
+
+# Trimming and filtering is performed on paired reads jointly, i.e. both reads must pass the filter for the pair to pass.
+
+filt_path <- file.path(miseq_path, "filtered") # Place filtered files in filtered/ subdirectory
+if(!file_test("-d", filt_path)) dir.create(filt_path)
+
+filtFs <- file.path(filt_path, paste0(sampleNames, "_F_trimfilt.fastq.gz"))
+filtRs <- file.path(filt_path, paste0(sampleNames, "_R_trimfilt.fastq.gz"))
+
+
+#### --- if not useing cut-adapt, Figaro is a nice option 
+# must use raw fastq files. Here, Figaro recommends a 192/158 trim for max retension (84%)
+# will trim primer for forward (19) and reverse (20)
+# Run Figaro to get estiamtes of what the truncLen should be (called Trim Position)
+# removing the trimleft since primers removed, also Figaro can't run with trimmed data so forego.
+#### ---
+
+
+# We combine these trimming parameters with standard filtering parameters, the most important being the enforcement of a maximum of **2 expected errors per-read** 
+
+out <- filterAndTrim(fwd=fnFs, filt=filtFs, rev=fnRs, filt.rev=filtRs, compress=TRUE, truncQ=2, truncLen=c(200,150), maxN=0, maxEE=c(2,2), rm.phix=TRUE, multithread=FALSE) 
+# On Windows set multithread=FALSE
+
+head(out)
+
+write.csv(out, file="output/out.trim.csv")
+```
+
+Infer sequence variants After filtering, use high-resolution DADA2 method to to infer amplicon sequence variants (ASVs) exactly, without imposing any arbitrary threshhold
+
+In order to verify that the error rates have been reasonably well-estimated, we inspect the fit between the observed error rates (black points) and the fitted error rates (black lines) in Figure 1. These figures show the frequencies of each type of transition as a function of the quality.
+
+```{r error rates}
+### estimate the error rates
+errF <- learnErrors(filtFs, multithread=TRUE)
+saveRDS(errF, file="output/errF.rds")
+
+errR <- learnErrors(filtRs, multithread=TRUE)
+saveRDS(errR, file="output/errR.rds")
+
+
+# plot error rates
+plotErrors(errF, nominalQ=TRUE)
+plotErrors(errR, nominalQ=TRUE)
+```
+
+Dereplication combines all identical sequencing reads into into "unique sequences" with a corresponding "abundance": the number of reads with that unique sequence. Dereplication substantially reduces computation time by eliminating redundant comparisons.
+
+```{r dereplicate}
+### Derep
+derepFs <- derepFastq(filtFs, verbose=TRUE)
+saveRDS(derepFs, file="output/derepFs.rds")
+
+derepRs <- derepFastq(filtRs, verbose=TRUE)
+saveRDS(derepRs, file="output/derepRs.rds")
+
+# Name the derep-class objects by the sample names
+names(derepFs) <- sampleNames
+names(derepRs) <- sampleNames
+```
+
+The DADA2 method relies on a parameterized model of substitution errors to distinguish sequencing errors from real biological variation
+
+```{r infer variants}
+#The DADA2 sequence inference method can run in two different modes:
+
+dadaFs <-dada(derepFs, err=errF, multithread=2)
+saveRDS(dadaFs, file="output/dadaFs.rds")
+
+dadaRs <-dada(derepRs, err=errF, multithread=2)
+saveRDS(dadaRs,file="output/dadaRs.rds")
+
+# inspect data
+dadaFs[[1]]
+```
+
+Construct sequence table and remove chimeras
+
+```{r sequence table}
+# The DADA2 method produces a sequence table that is a higher-resolution analogue of the common “OTU table”, i.e. a sample by sequence feature table valued by the number of times each sequence was observed in each sample.
+
+# get sequences
+head(getSequences(dadaFs[[2]]))
+
+# merge
+mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs)
+seqtab <- makeSequenceTable(mergers[!grepl("Mock", names(mergers))])
+table(nchar(getSequences(seqtab)))
+
+### save data
+saveRDS(mergers, file="output/mergers.rds")
+saveRDS(seqtab, file="output/seqtab.rds")
+```
+
+Chimeras have not yet been removed. The error model in the sequence inference algorithm does not include a chimera component, and therefore we expect this sequence table to include many chimeric sequences. We now remove chimeric sequences by comparing each inferred sequence to the others in the table, and removing those that can be reproduced by stitching together two more abundant sequences.
+
+```{r remove chimera}
+# remove chimera
+seqtab.nochim <-removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+saveRDS(seqtab.nochim,file="output/seqtab.nochim.rds")
+
+# Set multithread=TRUE to use all cores
+sum(seqtab.nochim)/sum(seqtab) # 99% of samples kept
+
+getN <-function(x)sum(getUniques(x))
+track <-cbind(out,sapply(dadaFs, getN), 
+              sapply(dadaRs, getN), sapply(mergers, getN),rowSums(seqtab.nochim))
+colnames(track) <-c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track) <- sampleNames
+head(track)
+```
+
+Assign taxonomy using the SILVA database for 16S
+
+```{r taxonomic assignment}
+taxa <- assignTaxonomy(seqtab.nochim, "data/silva_nr99_v138.1_wSpecies_train_set.fa.gz", multithread=TRUE)
+
+
+silva_nr99_v138.1_wSpecies_train_set.fa.gz
+
+
+
+# may need to set R environmnet memory load here: 
+# https://stackoverflow.com/questions/51248293/error-vector-memory-exhausted-limit-reached-r-3-5-0-macos
+
+# to add in Species for 16S
+taxa <- addSpecies(taxa, "data/silva_species_assignment_v138.1.fa.gz")
+
+# inspect taxonomic assignment
+taxa.print <- taxa # Removing sequence rownames for display only
+rownames(taxa.print) <- NULL
+head(taxa.print)
+
+# let's save this as .RData since it is so time consuming!
+saveRDS(taxa, file="output/taxaTable.rds")
+```
+
+```{r load back in data}
+out<- read.csv("output/out.trim.csv")
+errF<- readRDS("output/errF.rds")
+errR<- readRDS("output/errR.rds")
+derepFs<- readRDS("output/derepFs.rds")
+derepRs<- readRDS("output/derepRs.rds")
+dadaFs<- readRDS("output/dadaFs.rds")
+dadaRs<- readRDS("output/dadaRs.rds")
+mergers<- readRDS("output/mergers.rds")
+seqtab<- readRDS("output/seqtab.rds")
+seqtab.nochim<- readRDS("output/seqtab.nochim.rds")
+
+md<- read.csv("data/TC_metadata.csv")
+run.metaD<- read.csv("data/run.metaD.csv")
+
+taxa<- readRDS("output/taxaTable.rds")
+ps<- readRDS("output/ps.rds")
+ps.fin<- readRDS("output/ps.fin.rds")
+ps.rare<- readRDS("output/ps.rare.rds")
+
+ps.rare.sample.df<-read.csv("output/phyloseq_elements/ps.rare.sample.df.csv")
+ps.rare.ASV.df<-read.csv("output/phyloseq_elements/ps.rare.ASV.df.csv")
+ps.rare.tax.df<-read.csv("output/phyloseq_elements/ps.rare.tax.df.csv")
+ps.rare.seq.df<-read.csv("output/phyloseq_elements/ps.rare.seq.df.csv")
+ps.rare.ASV.df.num<-read.csv("output/phyloseq_elements/ps.rare.ASV.df.num.csv")
+
+```
+
+Combine data into a phyloseq object.\
+The package phyloseq organizes and synthesizes the different data types from a typical amplicon sequencing experiment into a single data object that can be easily manipulated
+
+```{r load back in taxa table}
+taxa<- readRDS("output/taxaTable.rds")
+
+## sample data
+# metadata is run.metaD - checks to make sure all rowames match up
+all(rownames(seqtab.nochim) %in% run.metaD$id)
+
+rownames(run.metaD) <- run.metaD$id
+
+ps <-phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE),
+              sample_data(run.metaD), 
+              tax_table(taxa))
+              
+
+# make a string of DNA names and add to phyloseq
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+ps <- merge_phyloseq(ps, dna)
+taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
+
+# save and reload ps object
+saveRDS(ps, file="output/ps.rds")
+ps<- readRDS("output/ps.rds")
+
+#11,812 taxa in 191 samples
+```
+
+Colombia data still here, need to remove it, as well as any taxa that is uncharacterized
+
+```{r remove Colombia and uncharacterized taxa}
+# Show available ranks in the dataset
+rank_names(ps)
+
+table(tax_table(ps)[, "Phylum"], exclude = NULL)
+table(tax_table(ps)[, "Kingdom"], exclude = NULL)
+
+# remove NAs in taxonomic table
+ps <- subset_taxa(ps, !is.na(Kingdom) & !Kingdom %in% c("", "NA"))
+ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "NA"))
+
+ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "Chloroplast"))
+
+
+
+##
+```
+
+Make a prevalance column so we can see how common these ASVs are
+
+```{r prevalence}
+# Compute prevalence of each feature, store as data.frame
+prevdf = apply(X = otu_table(ps),
+               MARGIN = ifelse(taxa_are_rows(ps), yes = 1, no = 2), FUN = function(x){sum(x > 0)})
+
+# Add taxonomy and total read counts to this data.frame
+prevdf = data.frame(Prevalence = prevdf,
+                    TotalAbundance = taxa_sums(ps),
+                    tax_table(ps))
+
+plyr::ddply(prevdf, "Phylum", function(df1){cbind(mean(df1$Prevalence),sum(df1$Prevalence))})
+
+```
+
+ID contaminants using the negative controls. We need to find out which ASVs are contams and remove them.
+
+```{r ID contaminants}
+## ID contaminants
+# first let's prune those not in at least 1 sample
+ps
+##163 samples
+
+ps.tui <- prune_taxa(taxa_sums(ps) > 1, ps)
+
+# remove samples with < 100 reads
+ps.tui <- prune_samples(sample_sums(ps) > 100, ps)
+
+ps.tui
+##145 samples, 18 samples removed
+
+
+
+sample_data(ps.tui)$is.neg <- sample_data(ps.tui)$sample_control == "neg.controls"
+
+
+contamdf.prev <- isContaminant(ps.tui, method="prevalence", neg="is.neg")
+
+table(contamdf.prev$contaminant) # which are contaminants? 5, 6120 not
+head(which(contamdf.prev$contaminant))
+```
+
+remove contaminants and then remove the negative controls all together
+
+```{r remove contaminants}
+
+### remove contaminants
+ps.noncontam <- prune_taxa(!contamdf.prev$contaminant, ps.tui)
+ps.noncontam # 6120 remain in 100 samples
+
+rich<-estimate_richness(ps.noncontam, split = TRUE, measures = NULL)
+plot_richness(ps.noncontam, x="date", measures=c("Observed", "Shannon")) + theme_bw()
+plot_richness(ps.noncontam, x="location", measures=c("Observed", "Shannon")) + theme_bw()
+
+### let's inspect
+df.noncontam <- as.data.frame(sample_data(ps.noncontam))
+df.noncontam$LibrarySize <- sample_sums(ps.noncontam) # this is the # of reads
+df.noncontam <- df.noncontam[order(df.noncontam$LibrarySize),]
+df.noncontam$Index <- seq(nrow(df.noncontam))
+###
+
+
+# library size / number of reads
+df.noncontam$LibrarySize
+
+#remove neg controls
+ps.noncontam.negout<- subset_samples(ps.noncontam, !(sample_control %in% "neg.controls"))
+
+# 4777 taxa in 99 samples (+ controls still in here -- can use to assess accuracy in mock)
+
+```
+
+```{r final PS}
+#remove the positive controls
+ps.samples<- subset_samples(ps.noncontam.negout, !(sample_control %in% "pos.control"))
+# 97 samples remain -- no controls, + or -, no Colombia
+
+ps.fin<-ps.samples
+
+### let's inspect
+df.fin <- as.data.frame(sample_data(ps.fin))
+df.fin$LibrarySize <- sample_sums(ps.fin) # this is the # of reads
+df.fin$Index <- seq(nrow(df.fin))
+### 
+
+saveRDS(ps.fin, file="output/ps.fin.rds")
+
+# Make a data frame with a column for the read counts of each sample
+sample_sum_df <- data.frame(sum = sample_sums(ps.fin))
+
+# Histogram of sample read counts
+hist.depth<-ggplot(sample_sum_df, aes(x = sum)) + 
+  geom_histogram(color = "black", fill = "gold2", binwidth = 2500) +
+  ggtitle("Distribution of sample sequencing depth") + 
+  xlab("Read counts") +
+  theme(axis.title.y = element_blank()) + theme_classic() + geom_vline(xintercept=5000, lty=2)
+  
+
+hist.depth
+dev.copy(pdf, "figures/hist.depth.pdf", height=4, width=5)
+dev.off() 
+```
+
+```{r rarify or not}
+
+pdf(file="figures/rare.raw.pdf", height=4, width=5)
+rarecurve(otu_table(ps.fin), step=50, cex=0.5, label=FALSE, xlim=c(0,10000))
+abline(v = 5000, lty = "dotted", col="red", lwd=2)
+rarecurve(otu_table(ps.fin), step=50, cex=0.5, label=FALSE, xlim=c(0,5000))
+abline(v = 5000, lty = "dotted", col="red", lwd=2)
+dev.off() 
+
+
+# remove samples with < 5000 reads
+ps.fin.prune <- prune_samples(sample_sums(ps.fin) > 5000, ps.fin) #89 samples
+rarecurve(otu_table(ps.fin.prune), step=50, cex=0.5, label=FALSE)
+
+
+ps.fin.prune.3000 <- prune_samples(sample_sums(ps.fin) > 3000, ps.fin)
+rarecurve(otu_table(ps.fin.prune.3000), step=50, cex=0.5, label=FALSE)
+
+############# rarefy without replacement, @ 5000, then 8 samples removed, 1753 ASVs
+ps.rare = rarefy_even_depth(ps.fin.prune, rngseed=1000, 
+                             sample.size=0.9*min(sample_sums(ps.tui)), replace=F)
+
+sort(rowSums(otu_table(ps.rare))) # rarify at 5000 reads
+saveRDS(ps.rare, file="output/ps.rare.rds")
+
+
+ps.rare.3000 = rarefy_even_depth(ps.fin.prune.3000, rngseed=1000, 
+                             sample.size=0.9*min(sample_sums(ps.tui)), replace=F)
+
+sort(rowSums(otu_table(ps.rare.3000))) # rarify at 3000 reads
+saveRDS(ps.rare, file="output/ps.rare.3000.rds")
+
+
+```
+
+```{r save and export files}
+#write phyloseq and end this first step
+ps.rare.sample.df<-data.frame(sample_data(ps.rare))
+ps.rare.ASV.df<-data.frame(otu_table(ps.rare))
+ps.rare.tax.df<-data.frame(tax_table(ps.rare))
+ps.rare.seq.df<-data.frame(refseq(ps.rare))
+
+write.csv(ps.rare.sample.df, "output/phyloseq_elements/ps.rare.sample.df.csv")
+write.csv(ps.rare.ASV.df, "output/phyloseq_elements/ps.rare.ASV.df.csv")
+write.csv(ps.rare.tax.df, "output/phyloseq_elements/ps.rare.tax.df.csv")
+write.csv(ps.rare.seq.df, "output/phyloseq_elements/ps.rare.seq.df.csv")
+```
+
+```{r ps melt}
+### Fast Melt code function for quick taxa summary 
+
+fast_melt = function(physeq,
+                     includeSampleVars = character(),
+                     omitZero = FALSE){
+    require("phyloseq")
+    require("data.table")
+    # supports "naked" otu_table as `physeq` input.
+    otutab = as(otu_table(physeq), "matrix")
+    if(!taxa_are_rows(physeq)){otutab <- t(otutab)}
+    otudt = data.table(otutab, keep.rownames = TRUE)
+    setnames(otudt, "rn", "TaxaID")
+    # Enforce character TaxaID key
+    otudt[, TaxaIDchar := as.character(TaxaID)]
+    otudt[, TaxaID := NULL]
+    setnames(otudt, "TaxaIDchar", "TaxaID")
+    # Melt count table
+    mdt = melt.data.table(otudt, 
+                          id.vars = "TaxaID",
+                          variable.name = "SampleID",
+                          value.name = "count")
+    if(omitZero){
+        # Omit zeroes and negative numbers
+        mdt <- mdt[count > 0]
+    }
+    # Omit NAs
+    mdt <- mdt[!is.na(count)]
+    # Calculate relative abundance
+    mdt[, RelativeAbundance := count / sum(count), by = SampleID]
+    if(!is.null(tax_table(physeq, errorIfNULL = FALSE))){
+        # If there is a tax_table, join with it. Otherwise, skip this join.
+        taxdt = data.table(as(tax_table(physeq, errorIfNULL = TRUE), "matrix"), keep.rownames = TRUE)
+        setnames(taxdt, "rn", "TaxaID")
+        # Enforce character TaxaID key
+        taxdt[, TaxaIDchar := as.character(TaxaID)]
+        taxdt[, TaxaID := NULL]
+        setnames(taxdt, "TaxaIDchar", "TaxaID")
+        # Join with tax table
+        setkey(taxdt, "TaxaID")
+        setkey(mdt, "TaxaID")
+        mdt <- taxdt[mdt]
+    }
+    # includeSampleVars = c("DaysSinceExperimentStart", "SampleType")
+    # includeSampleVars = character()
+    # includeSampleVars = c()
+    # includeSampleVars = c("aksjdflkas") 
+    wh.svars = which(sample_variables(physeq) %in% includeSampleVars)
+    if( length(wh.svars) > 0 ){
+        # Only attempt to include sample variables if there is at least one present in object
+        sdf = as(sample_data(physeq), "data.frame")[, wh.svars, drop = FALSE]
+        sdt = data.table(sdf, keep.rownames = TRUE)
+        setnames(sdt, "rn", "SampleID")
+        # Join with long table
+        setkey(sdt, "SampleID")
+        setkey(mdt, "SampleID")
+        mdt <- sdt[mdt]
+    }
+    setkey(mdt, "TaxaID")
+    return(mdt)
+}
+
+summarize_taxa = function(physeq, Rank, GroupBy = NULL){
+    require("phyloseq")
+    require("data.table")
+    Rank <- Rank[1]
+    if(!Rank %in% rank_names(physeq)){
+        message("The argument to `Rank` was:\n", Rank,
+                "\nBut it was not found among taxonomic ranks:\n",
+                paste0(rank_names(physeq), collapse = ", "), "\n",
+                "Please check the list shown above and try again.")
+    }
+    if(!is.null(GroupBy)){
+        GroupBy <- GroupBy[1]
+        if(!GroupBy %in% sample_variables(physeq)){
+            message("The argument to `GroupBy` was:\n", GroupBy,
+                    "\nBut it was not found among sample variables:\n",
+                    paste0(sample_variables(physeq), collapse = ", "), "\n",
+                    "Please check the list shown above and try again.")
+        }
+    }
+    # Start with fast melt
+    mdt = fast_melt(physeq)
+    if(!is.null(GroupBy)){
+        # Add the variable indicated in `GroupBy`, if provided.
+        sdt = data.table(SampleID = sample_names(physeq),
+                         var1 = get_variable(physeq, GroupBy))
+        setnames(sdt, "var1", GroupBy)
+        # Join
+        setkey(sdt, SampleID)
+        setkey(mdt, SampleID)
+        mdt <- sdt[mdt]
+    }
+    # Summarize
+    if(!is.null(GroupBy)){
+        summarydt = mdt[, list(meanRA = mean(RelativeAbundance),
+                               sdRA = sd(RelativeAbundance),
+                               minRA = min(RelativeAbundance),
+                               maxRA = max(RelativeAbundance)),
+                        by = c(Rank, GroupBy)]
+    } else {
+        Nsamples = nsamples(physeq)
+        # No GroupBy argument, can be more precise with the mean, sd, etc.
+        summarydt = mdt[, list(meanRA = sum(RelativeAbundance) / Nsamples,
+                               sdRA = sd(c(RelativeAbundance, numeric(Nsamples - .N))),
+                               minRA = ifelse(test = .N < Nsamples,
+                                              yes = 0L, 
+                                              no = min(RelativeAbundance)),
+                               maxRA = max(RelativeAbundance)),
+                        by = c(Rank)]
+    }
+    return(summarydt)
+}
+
+plot_taxa_summary = function(physeq, Rank, GroupBy = NULL){
+    require("phyloseq")
+    require("data.table")
+    require("ggplot2")
+    # Get taxa summary table 
+    dt1 = summarize_taxa(physeq, Rank = Rank, GroupBy = GroupBy)
+    # Set factor appropriately for plotting
+    RankCol = which(colnames(dt1) == Rank)
+    setorder(dt1, -meanRA)
+    dt1[, RankFac := factor(dt1[[Rank]], 
+                            levels = rev(dt1[[Rank]]))]
+    dt1[, ebarMax := max(c(0, min(meanRA + sdRA))), by = eval(Rank)]
+    dt1[, ebarMin := max(c(0, min(meanRA - sdRA))), by = eval(Rank)]
+    # Set zeroes to one-tenth the smallest value
+    ebarMinFloor = dt1[(ebarMin > 0), min(ebarMin)]
+    ebarMinFloor <- ebarMinFloor / 10
+    dt1[(ebarMin == 0), ebarMin := ebarMinFloor]
+    
+    pRank = ggplot(dt1, aes(x = meanRA, y = RankFac)) +
+        scale_x_log10() +
+        xlab("Mean Relative Abundance") +
+        ylab(Rank) +
+        theme_bw()
+    if(!is.null(GroupBy)){
+        # pRank <- pRank + facet_wrap(facets = as.formula(paste("~", GroupBy)))
+        pRank <- pRank + geom_point(mapping = aes_string(colour = GroupBy),
+                                    size = 5)
+    } else {
+        # Don't include error bars for faceted version
+        pRank <- pRank + geom_errorbarh(aes(xmax = ebarMax,
+                                            xmin = ebarMin))
+    }
+    return(pRank)
+}
+```
+
+```{r PERMANOVA, echo=TRUE}
+
+### Phyloseq ###
+########################## NMDS
+# the saved phyloseq ASV table is 'ps.rare.ASV.df'
+
+ps.rare.ASV.df
+Xnum<-sapply(strsplit(ps.rare.ASV.df$X, "_"), `[`,2)
+ps.rare.ASV.df$X<-(Xnum)
+ps.rare.ASV.df[1:1110] <- lapply(ps.rare.ASV.df[1:1110], as.numeric)
+class(ps.rare.ASV.df$X)
+class(ps.rare.ASV.df$ASV1)
+ps.rare.ASV.df.num <- ps.rare.ASV.df
+write.csv(ps.rare.ASV.df.num, "output/phyloseq_elements/ps.rare.ASV.df.num.csv")
+
+# Bray Curtis distance matrix
+bc_dist = as.matrix((vegdist(ps.rare.ASV.df.num, "bray"))) 
+
+# Bray PERMANOVA 
+bc.adonis <- adonis2(bc_dist~location*loc_type, data=ps.rare.sample.df, permutations = 9999)
+bc.adonis # site, year effect
+
+dd<-vegdist(bc_dist, method="bray")
+
+######## test for beta dispersion by YEAR
+mod.beta.loc_type<-betadisper(dd, ps.rare.sample.df$loc_type) # multivariate dispersions
+##Error in x - c : non-conformable arrays
+anova(mod.beta.loc_type) # not significant by YEAR  (equal dispersion)
+# cannot reject null hypothesis that the groups have equal dispersion
+
+#####################^^^^^^^^^^^^^^^^^^^^^^^
+
+plot(mod.beta.date)
+plot(mod.beta.date, )
+boxplot(mod.beta.date)
+dev.copy(pdf, "figures/mod.beta.date.pdf", height=4, width=5)
+dev.off()
+
+### test for beta dispersion by SITE
+mod.beta.location<-betadisper(dd, ps.rare.sample.df$location) # multivariate dispersions
+anova(mod.beta.location) # significant by site  (unequal dispersion)
+#  reject null hypothesis that the groups have equal dispersion
+
+plot(mod.beta.location)
+boxplot(mod.beta.location)
+
+
+
+dev.copy(pdf, "figures/.pdf", height=5, width=6)
+dev.off()
+```
+
+```{r plots and analysis, eval =FALSE}
+# base code approach to NMDS
+
+# k = 3 dimensions
+set.seed(520)
+NMDS = metaMDS(bc_dist, k=3, trymax=100)
+NMDS1=NMDS$points[,1]
+NMDS2=NMDS$points[,2]
+NMDS.plot.df=data.frame(NMDS1=NMDS1,NMDS2=NMDS2, 
+                        location=ps.rare.sample.df$location,
+                        date=ps.rare.sample.df$date)
+
+
+###
+# plotting elements
+date.group<-NMDS.plot.df$date
+location.group<-NMDS.plot.df$location
+# make colors for year
+date.col<-c("coral","mediumseagreen","goldenrod","dodgerblue")
+
+# make colors for sites
+library(RColorBrewer)
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+###
+
+### make plot by habitat with vectors for environment
+ordiplot(NMDS, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.6, 0.8))
+
+
+plot(NMDS)+ abline(h = 0, lty = "dotted") + abline(v = 0, lty = "dotted") 
++ points(NMDS, "sites", cex=0.8, pch=16, col=date.col[date.group]) + ordiellipse(NMDS, groups=date.group, kind="sd", draw="polygon", border=date.col, conf=0.95, alpha=30) +legend("topright", legend=levels(date.group), cex=1, col=date.col, pch=16, pt.cex=1, bty="n")
+
+
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS, "sites", cex=0.8, pch=16, col=date.col[date.group])
+ordiellipse(NMDS, groups=date.group, kind="sd", draw="polygon", border=date.col, conf=0.95, alpha=30)
+legend("topright", legend=levels(date.group), cex=1, col=date.col, pch=16, pt.cex=1, bty="n")
+
+dev.copy(pdf, "figures/NMDS.date.pdf", height=5.5, width=6)
+dev.off() 
+
+
+######### by sites
+ordiplot(NMDS, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.6, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS, "sites", cex=0.8, pch=17, col=col_vector[site.group])
+ordiellipse(NMDS, groups=site.group, kind="sd", draw="polygon", 
+            border=col_vector, conf=0.95, alpha=30)
+legend("topright", legend=levels(site.group), cex=0.5, col=col_vector, pch=17, pt.cex=0.8, bty="n", 
+       inset=c(0.4,0.05), x.intersp = 1.2, y.intersp = 0.6)
+
+dev.copy(pdf, "figures/NMDS.site.pdf", height=5.5, width=6)
+dev.off()
+```
+
+```{r alpha diversity}
+sort(rowSums(otu_table(ps.rare))) #reads
+div<-estimate_richness(ps.rare, split = TRUE, measures = NULL)
+
+# plot it
+alpha.diversity<-plot_richness(ps.rare, x="location", measures=c("Observed", "Shannon", "Simpson"))
+
+boxplot.alpha.diversity <- alpha.diversity + 
+  geom_boxplot(data = alpha.diversity$data, aes(x = location, y = value, fill=location), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(10, "Set3")) + 
+  theme(axis.text.x = element_text(angle = 300, vjust=.5))
+
+boxplot.alpha.diversity
+dev.copy(pdf, "figures/boxplot.alpha.diversity.pdf", height=5, width=15)
+dev.off() 
+
+```
+
+```{r PCoA and NMDS}
+############ PCoA
+
+all_pcoa <- ordinate(
+  physeq = ps.rare, 
+  method = "PCoA", 
+  distance = "bray"
+)
+
+PCoA.ord.plot<-plot_ordination(
+  physeq = ps.rare,                                                       
+  ordination = all_pcoa)+                                                
+  geom_point(aes(fill = site, shape = year), size = 3) +  
+  stat_ellipse(type = "norm", linetype = 2, aes(color=site)) +
+  scale_shape_manual(values = c(21, 22, 23, 24)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = col_vector, guide="none") +
+  theme_classic() +                                                      
+  theme(                             
+    legend.text = element_text(size = 12),                               
+    legend.title = element_blank(),                                      
+    legend.background = element_rect(fill = "white", color = "NA"))+  
+  theme(axis.text.y.left = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))+
+  guides(fill = guide_legend(override.aes = list(shape = 21))) 
+
+PCoA.ord.plot
+dev.copy(pdf, "figures/PCoA.pdf", height=7, width=10)
+dev.off() 
+
+
+############ NMDS
+# set k=3 to improve fit with metaMDS
+
+all_NMDS <- ordinate(
+  physeq = ps.rare, 
+  method = "NMDS", k=3,
+  distance = "bray"
+)
+
+NMDS.site.year.df<-plot_ordination(
+  physeq = ps.rare,                                                       
+  ordination = all_NMDS, justDF=TRUE)
+# by setting just"df" you get the dataframe that made the plot -- useful if need to hard-code
+
+NMDS.ord.plot<-plot_ordination(
+  physeq = ps.rare,                                                       
+  ordination = all_NMDS) +                                              
+  geom_point(aes(fill = site, shape = year), size = 3) + 
+  stat_ellipse(type = "norm", linetype = 2, aes(color=site)) +
+  scale_shape_manual(values = c(21, 22, 23, 24)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = col_vector, guide="none") +
+  theme_classic() +                                                       
+  theme(                             
+    legend.text = element_text(size = 12),                               
+    legend.title = element_blank(),                                     
+    legend.background = element_rect(fill = "white", color = "NA"))+  
+  theme(axis.text.y.left = element_text(size = 12),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12))+
+  guides(fill = guide_legend(override.aes = list(shape = 21))) 
+
+
+NMDS.ord.plot
+dev.copy(pdf, "figures/NMDS.pdf", height=7, width=10)
+dev.off() 
+
+############ plot by year PCoA and NMDS
+
+PCoA.ord.plot.year<-plot_ordination(
+  physeq = ps.rare,                                                   
+  ordination = all_pcoa, color="year") +                                                
+  geom_point(aes(color = year), size = 3) +    
+  stat_ellipse(type = "norm", linetype = 2, aes(color=year)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = brewer.pal(4, "BrBG")) +
+  theme_classic()                                                      
+ 
+PCoA.ord.plot.year
+dev.copy(pdf, "figures/PCoA.year.pdf", height=6, width=7)
+dev.off() 
+
+
+NMDS.ord.plot.year<-plot_ordination(
+  physeq = ps.rare,                                                   
+  ordination = all_NMDS, color="year") +                                                
+  geom_point(aes(color = year), size = 3) +    
+  stat_ellipse(type = "norm", linetype = 2, aes(color=year)) +
+  scale_fill_manual(values = col_vector) +
+  scale_color_manual(values = brewer.pal(4, "BrBG")) +
+  theme_classic()                                                      
+ 
+NMDS.ord.plot.year
+dev.copy(pdf, "figures/NMDS.year.pdf", height=6, width=7)
+dev.off() 
+
+
+
+```
+
+```{r alpha richness}
+# inspect # of reads
+sort(rowSums(otu_table(ps.rare))) #reads
+rich<-estimate_richness(ps.rare, split = TRUE, measures = NULL)
+
+# plot it
+alpha.richness<-plot_richness(ps.rare, x="location", measures=c("Observed", "Shannon", "Simpson"))
+
+boxplot.alpha.richness<- alpha.richness + 
+  geom_boxplot(data = alpha.richness$data, aes(x = location, y = value, fill=location), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(10, "Set3")) +
+  theme(axis.text.x = element_text(angle = 300, vjust=.5)) 
+
+boxplot.alpha.richness
+ggsave(filename = "figures/boxplot.alpha.richness.pdf", plot = boxplot.alpha.richness, height=5, width=7)
+dev.off() 
+
+```
+
+
+```{r hardcode NMDS, eval=FALSE}
+###
+# plotting elements
+year.group<-NMDS.ord.plot.year$year
+site.group<-NMDS.ord.plot.year$site
+# make colors for year
+year.col<-brewer.pal(4, "BrBG")
+
+# make colors for sites
+library(RColorBrewer)
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+###
+
+### make plot by habitat with vectors for environment
+ordiplot(NMDS, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.6, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS, "sites", cex=0.8, pch=16, col=year.col[year.group])
+ordiellipse(NMDS, groups=year.group, kind="sd", draw="polygon", border=year.col, conf=0.95, alpha=30)
+legend("topright", legend=levels(year.group), cex=1, col=year.col, pch=16, pt.cex=1, bty="n")
+
+dev.copy(pdf, "figures/NMDS.year.pdf", height=5.5, width=6)
+dev.off() 
+
+```
+
+
+brewer.pal
+Set3 = switch(n - 2, rgb(c(141, 255, 190), c(211, 255, 
+            186), c(199, 179, 218), maxColorValue = 255), rgb(c(141, 
+            255, 190, 251), c(211, 255, 186, 128), c(199, 179, 
+            218, 114), maxColorValue = 255), rgb(c(141, 255, 
+            190, 251, 128), c(211, 255, 186, 128, 177), c(199, 
+            179, 218, 114, 211), maxColorValue = 255), rgb(c(141, 
+            255, 190, 251, 128, 253), c(211, 255, 186, 128, 177, 
+            180), c(199, 179, 218, 114, 211, 98), maxColorValue = 255), 
+            rgb(c(141, 255, 190, 251, 128, 253, 179), c(211, 
+                255, 186, 128, 177, 180, 222), c(199, 179, 218, 
+                114, 211, 98, 105), maxColorValue = 255), rgb(c(141, 
+                255, 190, 251, 128, 253, 179, 252), c(211, 255, 
+                186, 128, 177, 180, 222, 205), c(199, 179, 218, 
+                114, 211, 98, 105, 229), maxColorValue = 255), 
+            rgb(c(141, 255, 190, 251, 128, 253, 179, 252, 217), 
+                c(211, 255, 186, 128, 177, 180, 222, 205, 217), 
+                c(199, 179, 218, 114, 211, 98, 105, 229, 217), 
+                maxColorValue = 255), rgb(c(141, 255, 190, 251, 
+                128, 253, 179, 252, 217, 188), c(211, 255, 186, 
+                128, 177, 180, 222, 205, 217, 128), c(199, 179, 
+                218, 114, 211, 98, 105, 229, 217, 189), maxColorValue = 255), 
+            rgb(c(141, 255, 190, 251, 128, 253, 179, 252, 217, 
+                188, 204), c(211, 255, 186, 128, 177, 180, 222, 
+                205, 217, 128, 235), c(199, 179, 218, 114, 211, 
+                98, 105, 229, 217, 189, 197), maxColorValue = 255), 
+            rgb(c(141, 255, 190, 251, 128, 253, 179, 252, 217, 
+                188, 204, 255), c(211, 255, 186, 128, 177, 180, 
+                222, 205, 217, 128, 235, 237), c(199, 179, 218, 
+                114, 211, 98, 105, 229, 217, 189, 197, 111), 
+                maxColorValue = 255)), Spectral = switch(n - 
+            2, rgb(c(252, 255, 153), c(141, 255, 213), c(89, 
+            191, 148), maxColorValue = 255), rgb(c(215, 253, 
+            171, 43), c(25, 174, 221, 131), c(28, 97, 164, 186), 
+            maxColorValue = 255), rgb(c(215, 253, 255, 171, 43), 
+            c(25, 174, 255, 221, 131), c(28, 97, 191, 164, 186), 
+            maxColorValue = 255), rgb(c(213, 252, 254, 230, 153, 
+            50), c(62, 141, 224, 245, 213, 136), c(79, 89, 139, 
+            152, 148, 189), maxColorValue = 255), rgb(c(213, 
+            252, 254, 255, 230, 153, 50), c(62, 141, 224, 255, 
+            245, 213, 136), c(79, 89, 139, 191, 152, 148, 189), 
+            maxColorValue = 255), rgb(c(213, 244, 253, 254, 230, 
+            171, 102, 50), c(62, 109, 174, 224, 245, 221, 194, 
+            136), c(79, 67, 97, 139, 152, 164, 165, 189), maxColorValue = 255), 
+            rgb(c(213, 244, 253, 254, 255, 230, 171, 102, 50), 
+                c(62, 109, 174, 224, 255, 245, 221, 194, 136), 
+                c(79, 67, 97, 139, 191, 152, 164, 165, 189), 
+                maxColorValue = 255), rgb(c(158, 213, 244, 253, 
+                254, 230, 171, 102, 50, 94), c(1, 62, 109, 174, 
+                224, 245, 221, 194, 136, 79), c(66, 79, 67, 97, 
+                139, 152, 164, 165, 189, 162), maxColorValue = 255), 
+            rgb(c(158, 213, 244, 253, 254, 255, 230, 171, 102, 
+                50, 94), c(1, 62, 109, 174, 224, 255, 245, 221, 
+                194, 136, 79), c(66, 79, 67, 97, 139, 191, 152, 
+                164, 165, 189, 162), maxColorValue = 255)), YlGn = switch(n - 
+            2, rgb(c(247, 173, 49), c(252, 221, 163), c(185, 
+            142, 84), maxColorValue = 255), rgb(c(255, 194, 120, 
+            35), c(255, 230, 198, 132), c(204, 153, 121, 67), 
+            maxColorValue = 255), rgb(c(255, 194, 120, 49, 0), 
+            c(255, 230, 198, 163, 104), c(204, 153, 121, 84, 
+                55), maxColorValue = 255), rgb(c(255, 217, 173, 
+            120, 49, 0), c(255, 240, 221, 198, 163, 104), c(204, 
+            163, 142, 121, 84, 55), maxColorValue = 255), rgb(c(255, 
+            217, 173, 120, 65, 35, 0), c(255, 240, 221, 198, 
+            171, 132, 90), c(204, 163, 142, 121, 93, 67, 50), 
+            maxColorValue = 255), rgb(c(255, 247, 217, 173, 120, 
+            65, 35, 0), c(255, 252, 240, 221, 198, 171, 132, 
+            90), c(229, 185, 163, 142, 121, 93, 67, 50), maxColorValue = 255), 
+            rgb(c(255, 247, 217, 173, 120, 65, 35, 0, 0), c(255, 
+                252, 240, 221, 198, 171, 132, 104, 69), c(229, 
+                185, 163, 142, 121, 93, 67, 55, 41), maxColorValue = 255)), 
+
+
+
+```{r colors}
+ 
+color1 <- rgb(c(141, 255, 190), c(211, 255, 186), c(199, 179, 218), maxColorValue = 255)
+
+
+brewer.pal(12, "Set3")
+[1] "#8DD3C7" "#FFFFB3" "#BEBADA" "#FB8072" "#80B1D3" "#FDB462" "#B3DE69" "#FCCDE5"
+[9] "#D9D9D9" "#BC80BD" "#CCEBC5" "#FFED6F"
+
+brewer.pal.info
+display.brewer.pal(12, "Set3")
+
+Set 1: "#E41A1C" "#377EB8" "#4DAF4A" "#984EA3" "#FF7F00" "#FFFF33" "#A65628" "#F781BF" "#999999"
+
+Dark 2: "#1B9E77" "#D95F02" "#7570B3" "#E7298A" "#66A61E" "#E6AB02" "#A6761D" "#666666"
+  
+
+color_mess <- inner_join(class_mean_rel_abund, class_pool, by = "Class") %>% 
+  mutate(Class = if_else(pool, "Other", Class)) %>%
+  group_by(location, Class) %>% 
+  summarize(mean_rel_abund_class = sum(mean_rel_abund_class),
+            mean = sum(mean)) %>% 
+  mutate(Class = factor(Class), 
+         Class = fct_reorder(Class, mean, .desc = TRUE), 
+         Class = fct_shift(Class, n=1)) %>%
+  ggplot(aes(x=location, y=mean_rel_abund_class, fill=Class)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Gammaproteobacteria", "Bacilli", "Clostridia", "Fusobacteriia", "Alphaproteobacteria", "Cyanobacteriia", "Actinobacteria", "Brevinematia"), 
+                    values = c("#D9D9D9", "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462", "#B3DE69", "#FCCDE5")) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Class Composition of Bacterial Communities by Site")
+color_mess
+
+
+
+```
+
+
+
+
+
+
+
+```{r CLASS.MESS}
+
+##CLASS
+class_counts_tab <- otu_table(tax_glom(ps.rare, taxrank="Class"))
+class_tax_vec <- as.vector(tax_table(tax_glom(ps.rare, taxrank="Class"))[,"Class"]) 
+colnames(class_counts_tab) <- as.vector(class_tax_vec)
+class_proportions <- apply(class_counts_tab, 1, function(x) x/sum(x))
+class_proportions <- as.data.frame(class_proportions) # making df
+class_proportions$Class <- row.names(class_proportions)
+class_prop_long <- class_proportions %>% 
+  pivot_longer(cols = colnames(class_proportions[,1:83]), 
+               names_to = "id", 
+               values_to = "rel_abund_class")
+# ordering by sample ID 
+class_prop_long <- class_prop_long[order(class_prop_long$id),] 
+
+metadata_final = data.frame (sample_data(ps.rare))
+comp.metadata <- as.data.frame(metadata_final[, c("id", "location", "loc_type", "mesocosm")])
+# merging metadata with class df 
+class_comp <-  inner_join(class_prop_long, comp.metadata, by = "id")
+
+
+
+class_location_raw <- class_comp %>% 
+  group_by(location, Class) %>% 
+  summarize(mean_rel_abund_class = 100*mean(rel_abund_class)) %>% 
+  ggplot(aes(x=location, y=mean_rel_abund_class, fill=Class)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_discrete(name = NULL) + 
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(10, "pt"))
+class_location_raw
+ggsave("figures/class_location_raw.tiff", width = 15, height = 5)
+
+
+
+# making an "other" category and improving figure based on Pat Schloss suggestion
+
+# seeing maximum mean relative abundance of each phyla in above/below groups 
+class_mean_rel_abund <- class_comp %>% 
+  group_by(location, Class) %>% 
+  summarize(mean_rel_abund = 100*mean(rel_abund_class))
+class_mean_rel_abund
+
+max.class <- class_mean_rel_abund %>% 
+  group_by(Class) %>% 
+  summarize(max(mean_rel_abund)) 
+max.class <- max.class[order(max.class$'max(mean_rel_abund)'), decreasing = FALSE]
+view(max.class)
+
+# pooling everything over 5% using a logical 
+class_pool <- class_mean_rel_abund %>% 
+  group_by(Class) %>% 
+  summarize(pool = max(mean_rel_abund) < 5, 
+            mean = mean(mean_rel_abund)) # this creates a logical of if a phyla meets the condition (is less than 5%)
+
+# join with df and plot! 
+class.mess <- inner_join(class_mean_rel_abund, class_pool, by = "Class") %>% 
+  mutate(Class = if_else(pool, "Other", Class)) %>%
+  group_by(location, Class) %>% 
+  summarize(mean_rel_abund = sum(mean_rel_abund),
+            mean = sum(mean)) %>% 
+  mutate(Class = factor(Class), 
+         Class = fct_reorder(Class, mean, .desc = TRUE), 
+         Class = fct_shift(Class, n=1)) %>%
+  ggplot(aes(x=location, y=mean_rel_abund, fill=Class)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Clostridia", "Bacilli", "Fusobacteriia", "Gammaproteobacteria", "Alphaproteobacteria", "Cyanobacteriia", "Actinobacteria", "Brevinematia"), 
+                    values = c("#8DD3C7", "#FFFFB3", "#FFED6F", "#FB8072", "#BEBADA", "#BC80BD", "#80B1D3", "#FDB462", "#B3DE69")) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Class Composition of Bacterial Communities by Site")
+class.mess
+ggsave("figures/class.mess.tiff", height = 5, width = 12)
+
+
+```
+
+
+
+
+
+

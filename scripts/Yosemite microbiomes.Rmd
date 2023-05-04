@@ -1,0 +1,574 @@
+---
+title: "Yosemite microbiomes"
+author: "C Wall"
+date: "2/16/2022"
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r global options, results="hide", warning=FALSE, message=FALSE}
+if (!require('knitr')) install.packages('knitr'); library('knitr')
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, fig.align='center')
+
+# load packages
+if (!require("pacman")) install.packages("pacman") # for rapid install if not in library
+
+devtools::install_github("benjjneb/dada2", ref="v1.20") # update to most recent dada2
+
+# use pacman to load CRAN packages missing
+pacman::p_load('knitr', 'tidyverse', 'knitr', 'magrittr', 'effects', 'devtools',
+               'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan", "cowplot",
+               "decontam")
+
+
+#upload Bioconductor (now BiocManager or R v. > 3.5.0 ), can specify different version in last line
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install(version = "3.10")
+
+
+#install specific BiocManager packages
+BiocManager::install(c(
+    "Decipher", "phangorn", "phyloseq"
+  ), update = TRUE, ask = FALSE)
+
+
+
+```
+
+###Filter and Trim
+We begin by filtering out low-quality sequencing reads and trimming the reads to a consistent length. While generally recommended filtering and trimming parameters serve as a starting point, no two datasets are identical and therefore it is always worth inspecting the quality of the data before proceeding.
+
+First we read in the names of the fastq files, and perform some string manipulation to get lists of the forward and reverse fastq files in matched order:
+
+```{r, filter and trim}
+
+miseq_path<-"data/Miseq_test" # CHANGE to the directory containing the fastq files after unzipping.
+list.files(miseq_path)
+
+## Filter and Trim
+### remove low quality reads, trim to consistent length
+
+# Sort ensures forward/reverse reads are in same order
+fnFs <- sort(list.files(miseq_path, pattern="_R1_001.fastq"))
+fnRs <- sort(list.files(miseq_path, pattern="_R2_001.fastq"))
+
+# Extract sample names, assuming filenames have format: SAMPLENAME_XXX.fastq
+sampleNames.p2 <- sapply(strsplit(fnFs, "_"), `[`, 2) # extract sample names
+sampleNames.p3 <- sapply(strsplit(fnFs, "_"), `[`, 3) # extract the run # sample
+sampleNames<-paste(sampleNames.p2,sampleNames.p3) # compile
+sampleNames<-gsub(" ", "_", sampleNames) # remove space and add an underscore
+
+# Specify the full path to the fnFs and fnRs
+fnFs <- file.path(miseq_path, fnFs)
+fnRs <- file.path(miseq_path, fnRs)
+fnFs[1:3]
+
+# quality score plot for forward reads
+plotQualityProfile(fnFs[10:11])
+
+# quality score plot for reverse reads
+plotQualityProfile(fnRs[10:11])
+
+
+```
+  
+Do the forward and reverse reads maintain high quality throughout?  
+Can truncate based on quality for reads. The truncating value does not have to be same for F and R.  
+Cam also choose to trim the first 10 nucleotides of each read... why? Based on empirical observations across many Illumina datasets that these base positions are particularly likely to contain pathological errors.
+
+```{r, define filenames}
+# We define the filenames for the filtered fastq.gz files:
+
+filt_path <- file.path(miseq_path, "filtered") # Place filtered files in filtered/ subdirectory
+if(!file_test("-d", filt_path)) dir.create(filt_path)
+filtFs <- file.path(filt_path, paste0(sampleNames, "_F_filt.fastq.gz"))
+filtRs <- file.path(filt_path, paste0(sampleNames, "_R_filt.fastq.gz"))
+
+```
+  
+We combine these trimming parameters with standard filtering parameters, the most important being the enforcement of a maximum of **2 expected errors per-read** (Edgar and Flyvbjerg 2015). Trimming and filtering is performed on paired reads jointly, i.e. both reads must pass the filter for the pair to pass.
+
+```{r, Filter the forward and reverse reads}
+
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, #truncLen=c(150,150),
+              maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
+              compress=TRUE, multithread=TRUE) # On Windows set multithread=FALSE
+head(out)
+
+```
+
+###Infer sequence variants
+After filtering, the typical amplicon bioinformatics workflow clusters sequencing reads into operational taxonomic units (OTUs): groups of sequencing reads that differ by less than a fixed dissimilarity threshhold. Here we instead use the high-resolution DADA2 method to to infer amplicon sequence variants (ASVs) exactly, without imposing any arbitrary threshhold, and thereby resolving variants that differ by as little as one nucleotide (Benjamin J Callahan et al. 2016).
+
+###Dereplication
+
+Dereplication combines all identical sequencing reads into into “unique sequences” with a corresponding “abundance”: the number of reads with that unique sequence. Dereplication substantially reduces computation time by eliminating redundant comparisons.
+```{r, dereplicate}
+derepFs <- derepFastq(filtFs, verbose=TRUE)
+derepRs <- derepFastq(filtRs, verbose=TRUE)
+
+# Name the derep-class objects by the sample names
+names(derepFs) <- sampleNames
+names(derepRs) <- sampleNames
+```
+The DADA2 method relies on a parameterized model of substitution errors to distinguish sequencing errors from real biological variation. Because error rates can (and often do) vary substantially between sequencing runs and PCR protocols, the model parameters can be discovered from the data itself using a form of unsupervised learning in which sample inference is alternated with parameter estimation until both are jointly consistent.
+
+Parameter learning is computationally intensive, as it requires multiple iterations of the sequence inference algorithm, and therefore it is often useful to estimate the error rates from a (sufficiently large) subset of the data.
+
+```{r, error rate}
+errF <- learnErrors(filtFs, multithread=TRUE)
+errR <- learnErrors(filtRs, multithread=TRUE)
+```
+  
+In order to verify that the error rates have been reasonably well-estimated, we inspect the fit between the observed error rates (black points) and the fitted error rates (black lines) in Figure 1. These figures show the frequencies of each type of transition as a function of the quality.
+
+```{r}
+plotErrors(errF)
+plotErrors(errR)
+```
+ 
+The DADA2 sequence inference method can run in two different modes: 
+(1) Independent inference by sample (pool=FALSE)  
+(2) Inference from the pooled sequencing reads from all samples (pool=TRUE). 
+
+Independent inference has the advantage that computation time is linear in the number of samples, and memory requirements are flat with the number of samples. This allows scaling out to datasets of almost unlimited size. Pooled inference is more computationally taxing, and can become intractable for datasets of tens of millions of reads. However, pooling improves the detection of rare variants that were seen just once or twice in an individual sample but many times across all samples. As this dataset is not particularly large, we perform pooled inference. As of version 1.2, multithreading can now be activated with the arguments multithread = TRUE, which substantially speeds this step.  
+
+```{r}
+dadaFs <- dada(derepFs, err=errF, multithread=TRUE)
+dadaRs <- dada(derepRs, err=errR, multithread=TRUE)
+```
+
+```{r}
+#Inspecting the dada-class object returned by dada:
+dadaFs[[1]]
+```
+
+###Construct sequence table and remove chimeras
+
+The DADA2 method produces a sequence table that is a higher-resolution analogue of the common “OTU table”, i.e. a sample by sequence feature table valued by the number of times each sequence was observed in each sample.
+```{r, sequence tables}
+mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs)
+seqtabAll <- makeSequenceTable(mergers[!grepl("Mock", names(mergers))])
+table(nchar(getSequences(seqtabAll)))
+```
+
+Chimeras have not yet been removed. The error model in the sequence inference algorithm does not include a chimera component, and therefore we expect this sequence table to include many chimeric sequences. We now remove chimeric sequences by comparing each inferred sequence to the others in the table, and removing those that can be reproduced by stitching together two more abundant sequences.
+  
+```{r, remove chimera}
+seqtabNoC <- removeBimeraDenovo(seqtabAll)
+
+```
+  
+Although exact numbers vary substantially by experimental condition, it is typical that chimeras comprise a substantial fraction of inferred sequence variants, but only a small fraction of all reads. 
+  
+###Assign taxonomy  
+One of the benefits of using well-classified marker loci like the 16S rRNA gene is the ability to taxonomically classify the sequence variants. The dada2 package implements the naive Bayesian classifier method for this purpose (Wang et al. 2007). This classifier compares sequence variants to a training set of classified sequences, and here we use the RDP v16 training set (Cole et al. 2009).
+```{r, Assign taxonomy}
+fastaRef <- "data/rdp_train_set_16.fa.gz"
+taxTab <- assignTaxonomy(seqtabNoC, refFasta = fastaRef, multithread=TRUE)
+unname(head(taxTab))
+```
+
+###Combine data into a phyloseq object
+The package phyloseq organizes and synthesizes the different data types from a typical amplicon sequencing experiment into a single data object that can be easily manipulated. The last bit of information needed is the sample data contained in a .csv file. This can be downloaded from github:
+
+
+```{r}
+samdf<-read.csv("data/16S_test_sampledata.csv")
+head(samdf)
+samdf$Sample_or_Control<-ifelse(samdf$species=="blank", "control",
+                         ifelse(samdf$species=="mock", "mock", "sample"))
+
+all(rownames(seqtabAll) %in% samdf$SampleID)
+
+rownames(samdf) <- samdf$SampleID
+
+#phyloseq object
+ps <- phyloseq(otu_table(seqtabNoC, taxa_are_rows=FALSE), 
+               sample_data(samdf), 
+               tax_table(taxTab))
+
+## let's inspect
+df <- as.data.frame(sample_data(ps)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(ps) # this is the # of reads
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+
+
+########### plot the inspected figures
+# figure formatting conditions
+Fig.formatting<-(theme_classic()) +
+  theme(text=element_text(size=10),
+        axis.line=element_blank(),
+        legend.text.align = 0,
+        legend.text=element_text(size=10),
+        #legend.title = element_blank(),
+        panel.border = element_rect(fill=NA, colour = "black", size=1),
+        aspect.ratio=1, 
+        axis.ticks.length=unit(0.25, "cm"),
+        axis.text.y=element_text(
+          margin=unit(c(0.5, 0.5, 0.5, 0.5), "cm"), colour="black", size=10), 
+        axis.text.x=element_text(
+          margin=unit(c(0.5, 0.5, 0.5, 0.5), "cm"), colour="black", size=8)) +
+  theme(legend.key.size = unit(0.4, "cm")) +
+  theme(aspect.ratio=1.3) +
+  theme(panel.spacing=unit(c(0, 0, 0, 0), "cm"))
+
+# plot 1 by sample vs. control
+plot.inspect.reads.type<-ggplot(data=df, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + 
+  geom_point()+
+  scale_color_manual(name="Sample Type", values = c("gray75", "darkgoldenrod1", "cornflowerblue")) +
+  xlab("Sample Index") + ylab("Library Size") +
+  Fig.formatting
+
+# plot 2 with species and sample types
+plot.inspect.reads.species<-ggplot(data=df, aes(x=Index, y=LibrarySize, color=species)) + 
+  geom_point()+
+  scale_color_manual(name="Sample Type", 
+                     values = c("gray75", "coral", "mediumseagreen", "darkgoldenrod1"),
+                     labels = c("blank", "copepod", "Daphnia", "mock")) +
+  xlab("Sample Index") + ylab("Library Size") +
+  Fig.formatting
+
+# combine and export
+inspect.reads<-plot_grid(plot.inspect.reads.type,plot.inspect.reads.species, ncol=2)
+inspect.reads
+ggsave("figures/inspect.reads.pdf", height=5, width=8)
+
+
+
+################################
+```
+
+
+```{r, decontam}
+# https://urldefense.com/v3/__https://www.bioconductor.org/packages/devel/bioc/vignettes/decontam/inst/doc/decontam_intro.html__;!!Mih3wA!AIU7Db0ibYj2LpvRb0V3wpzdM8ddcRiYxCf5YamaPh4U-SE19Mk4rY9gphEjcDshi-MRezTedBhc9cQHyq4_4kc$  
+
+################################ Decontam with PCR controls
+
+# remove the mock communities
+# ps.nomock <- prune_samples(sample_names(ps) != 
+#                   c("ZymoPCR0_01", "ZymoPCR0_1","ZymoPCR1_S2","ZymoPCR10_S1"), ps) 
+
+
+## ID contaminants
+sample_data(ps)$is.neg <- sample_data(ps)$Sample_or_Control == "control"
+contamdf.prev <- isContaminant(ps, method="prevalence", neg="is.neg")
+table(contamdf.prev$contaminant) # which are contaminants?
+head(which(contamdf.prev$contaminant)) # apparently none
+
+# use aggressive threshold
+
+#prevalence test: threshold=0.5,  will identify as contaminants all sequences more prevalent in negative controls than in positive samples.
+contamdf.prev05 <- isContaminant(ps, method="prevalence", neg="is.neg", threshold=0.5)
+table(contamdf.prev05$contaminant) # 5 sequences
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(ps, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "sample", ps.pa)
+
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.prev05$contaminant)
+
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+```
+
+###Taxonomic filtering  
+In many biological settings, the set of all organisms from all samples are well-represented in the available taxonomic reference database. When (and only when) this is the case, it is reasonable or even advisable to filter taxonomic features for which a high-rank taxonomy could not be assigned. Such ambiguous features in this setting are almost always sequence artifacts that don’t exist in nature. It should be obvious that such a filter is not appropriate for samples from poorly characterized or novel specimens, at least until the possibility of taxonomic novelty can be satisfactorily rejected. Phylum is a useful taxonomic rank to consider using for this purpose, but others may work effectively for your data.
+
+To begin, create a table of read counts for each Phylum present in the dataset.
+
+```{r, taxonomic filtering}
+# Show available ranks in the dataset
+rank_names(ps)
+
+table(tax_table(ps)[, "Phylum"], exclude = NULL)
+
+```
+
+This shows a few phyla for which only one feature was observed. Those may be worth filtering, and we’ll check that next. First, notice that in this case, six features were annotated with a Phylum of NA. These features are probably artifacts in a dataset like this, and should be removed.
+
+The following ensures that features with ambiguous phylum annotation are also removed. Note the flexibility in defining strings that should be considered ambiguous annotation.
+
+```{r, prevalance filtering}
+#remove NAs
+ps <- subset_taxa(ps, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
+
+# re-examine table, NAs gone
+table(tax_table(ps)[, "Phylum"], exclude = NULL)
+```
+
+A useful next step is to explore feature prevalence in the dataset, which we will define here as the number of samples in which a taxon appears at least once.
+
+```{r, compute prevalence}
+# Compute prevalence of each feature, store as data.frame
+prevdf = apply(X = otu_table(ps),
+               MARGIN = ifelse(taxa_are_rows(ps), yes = 1, no = 2),
+               FUN = function(x){sum(x > 0)})
+
+# Add taxonomy and total read counts to this data.frame
+prevdf = data.frame(Prevalence = prevdf,
+                    TotalAbundance = taxa_sums(ps),
+                    tax_table(ps))
+
+```
+
+Are there phyla that are comprised of mostly low-prevalence features? Compute the total and average prevalence of the features in each phylum.
+
+```{r, low prevalence}
+plyr::ddply(prevdf, "Phylum", function(df1){cbind(mean(df1$Prevalence),sum(df1$Prevalence))})
+# example Euryarchaeota only in 4 samples
+```
+
+```{r, filter, eval=FALSE}
+# Define phyla to filter
+#filterPhyla = c("Fusobacteria", "Deinococcus-Thermus")
+# Filter entries with unidentified Phylum.
+#ps1 = subset_taxa(ps, !Phylum %in% filterPhyla)
+
+```
+More on prevalence filtering...'
+
+The previous filtering steps are considered supervised, because they relied on prior information that is external to this experiment (a taxonomic reference database). This next filtering step is completely unsupervised, relying only on the data in this experiment, and a parameter that we will choose after exploring the data. Thus, this filtering step can be applied even in settings where taxonomic annotation is unavailable or unreliable.
+
+First, explore the relationship of prevalence and total read count for each feature. Sometimes this reveals outliers that should probably be removed, and also provides insight into the ranges of either feature that might be useful. This aspect depends quite a lot on the experimental design and goals of the downstream inference, so keep these in mind. It may even be the case that different types of downstream inference require different choices here. There is no reason to expect ahead of time that a single filtering workflow is appropriate for all analysis.
+```{r}
+ps1<-ps
+
+# Subset to the remaining phyla
+prevdf1 = subset(prevdf, Phylum %in% get_taxa_unique(ps1, "Phylum"))
+ggplot(prevdf1, aes(TotalAbundance, Prevalence / nsamples(ps1),color=Phylum)) +
+  # Include a guess for parameter
+  geom_hline(yintercept = 0.05, alpha = 0.5, linetype = 2) +  geom_point(size = 2, alpha = 0.7) +
+  scale_x_log10() +  xlab("Total Abundance") + ylab("Prevalence [Frac. Samples]") +
+  facet_wrap(~Phylum) + theme(legend.position="none")
+```
+
+Each point in Figure 2 is a different taxa. Exploration of the data in this way is often useful for selecting filtering parameters, like the minimum prevalence criteria we will used to filter the data above.
+
+Sometimes a natural separation in the dataset reveals itself, or at least, a conservative choice that is in a stable region for which small changes to the choice would have minor or no effect on the biological interpreation (stability). Here no natural separation is immediately evident, but it looks like we might reasonably define a prevalence threshold in a range of zero to ten percent or so. Take care that this choice does not introduce bias into a downstream analysis of association of differential abundance.
+
+The following uses five percent of all samples as the prevalence threshold.
+```{r, threshold, eval=FALSE}
+# Define prevalence threshold as 5% of total samples
+#prevalenceThreshold = 0.05 * nsamples(ps)
+#prevalenceThreshold
+
+#keepTaxa = rownames(prevdf1)[(prevdf1$Prevalence >= prevalenceThreshold)]
+#ps2 = prune_taxa(keepTaxa, ps)
+
+```
+###Abundance transformation  
+
+It is usually necessary to transform microbiome count data to account for differences in library size, variance, scale, etc. The phyloseq package provides a flexible interface for defining new functions to accomplish these transformations of the abundance values via the function transform_sample_counts(). The first argument to this function is the phyloseq object you want to transform, and the second argument is an R function that defines the transformation. The R function is applied sample-wise, expecting that the first unnamed argument is a vector of taxa counts in the same order as the phyloseq object. Additional arguments are passed on to the function specified in the second argument, providing an explicit means to include pre-computed values, previously defined parameters/thresholds, or any other object that might be appropriate for computing the transformed values of interest.
+
+This example begins by defining a custom plot function, plot_abundance(), that uses phyloseq’s function to define a relative abundance graphic. We will use this to compare more easily differences in scale and distribution of the abundance values in our phyloseq object before and after transformation.
+
+```{r, abundance transformation}
+plot_abundance = function(physeq,title = "",
+                          Facet = "Order", Color = "Phylum"){
+  # Arbitrary subset, based on Phylum, for plotting
+  #p1f = subset_taxa(physeq, Phylum %in% c("Firmicutes"))
+  mphyseq = psmelt(ps1)
+  mphyseq <- subset(mphyseq, Abundance > 0)
+  ggplot(data = mphyseq, mapping = aes_string(x = "species",y = "Abundance",
+                              color = Color, fill = Color)) +
+    geom_violin(fill = NA) +
+    geom_point(size = 1, alpha = 0.3,
+               position = position_jitter(width = 0.3)) +
+    facet_wrap(facets = Facet) + scale_y_log10()+
+    theme(legend.position="none")
+}
+```
+
+The transformation in this case converts the counts from each sample into their frequencies, often referred to as proportions or relative abundances. This function is so simple that it is easiest to define it within the function call to transform_sample_counts().
+
+```{r, transform}
+# Transform to relative abundance. Save as new object.
+ps1ra = transform_sample_counts(ps1, function(x){x / sum(x)})
+
+#Now we plot the abundance values before and after transformation.
+
+plotBefore = plot_abundance(ps1,"")
+plotAfter = plot_abundance(ps1ra,"")
+# Combine each plot into one graphic.
+grid.arrange(nrow = 2,  plotBefore, plotAfter)
+```
+
+```{r}
+# inspect # of reads
+sort(rowSums(otu_table(ps1))) #reads: 134 in PCR and 65,000 in highest
+rich<-estimate_richness(ps1, split = TRUE, measures = NULL)
+richness.test<-cbind(samdf, rich$Observed)
+
+# plot it
+plot_richness(ps1, x="species", measures=c("Observed", "Shannon"))
+```
+
+
+```{r rarify}
+###### removed PCR controls with low read #
+ps.prune <- prune_samples(sample_sums(ps1)>sort(rowSums(otu_table(ps1)))[5], ps1)
+
+########### rarefy by base function
+ps.rare1 <- rarefy_even_depth(ps.prune, rngseed=1024)
+# 750 OTUs removed once no longer present in random sampling
+
+sort(rowSums(otu_table(ps.rare1)))
+# rarefy to 16,134 reads
+
+########### alternative, rarefy by with specification
+# rarefy without replacement
+ps.rare2 = rarefy_even_depth(ps.prune, rngseed=1, 
+                             sample.size=0.9*min(sample_sums(ps.prune)), replace=F)
+# 740 OTUs removed once no longer present in random sampling
+
+sort(rowSums(otu_table(ps.rare2)))
+# rarify to 14520 reads
+```
+
+
+```{r richness tests}
+# https://urldefense.com/v3/__https://joey711.github.io/phyloseq/plot_richness-examples.html__;!!Mih3wA!AIU7Db0ibYj2LpvRb0V3wpzdM8ddcRiYxCf5YamaPh4U-SE19Mk4rY9gphEjcDshi-MRezTedBhc9cQH1jSl8N0$  
+
+################## using rarified data
+Rar.rich.plot<-plot_richness(ps.rare2, x="species", color="processing", measures=c("Observed", "Shannon")) + theme_bw()
+
+Rar.rich.plot
+dev.print(pdf, "figures/16S.rar.rich.pdf", height=5, width=7)
+dev.off() 
+
+################## using rarified data
+Rar.rich.plot.kit<-plot_richness(ps.rare2, x="species", color="processing", shape="extraction.kit",
+                             measures=c("Observed", "Shannon")) + theme_bw()
+
+Rar.rich.plot.kit
+dev.print(pdf, "figures/16S.rar.kit.pdf", height=5, width=7)
+dev.off() 
+
+################## using non-rarified data
+all.rich.nonrare<-plot_richness(ps1, x="species", color="species", 
+                                measures=c("Observed", "Shannon")) + theme_bw()
+
+all.rich.nonrare
+dev.print(pdf, "figures/16S.all.nonrar.rich.pdf", height=5, width=7)
+dev.off() 
+
+
+##############
+rare.rich<-estimate_richness(ps.rare2, split = TRUE, measures = NULL)
+samples<-samdf[c(6:24),] # no controls
+
+# if remove all blanks (PCR blanks and mocks)...
+plankton.samples<-samples[!(samples$species=="blank"),]
+
+richness.df<-cbind(samples, rare.rich$Observed)
+colnames(richness.df)[11] <- "richness" #rename
+richness.df$species<-droplevels(richness.df$species)
+
+richness.df %>%
+  dplyr::select(Core.Lab.Sample.Name, species, processing, number.of.individuals, location, extraction.kit, richness)
+
+#richness across species
+plot(richness.df$richness~richness.df$species)
+dev.print(pdf, "figures/16S.richness.species.pdf", height=6, width=8)
+dev.off() 
+
+
+
+#######################################
+# estimate bacterial richness
+brich<-estimate_richness(ps1, measures="Observed")
+
+bac.rar<-rarecurve(otu_table(ps1), step=100, cex=0.5, label=TRUE, col="blue", 
+                   main="Bacteria", y="OTU richness",
+                   xlim=c(0, 30000))
+abline(v = 15000, col="gray50", lwd=2, lty=2)
+
+dev.print(pdf, "figures/16S.rarefaction.pdf", height=6, width=8)
+dev.off() 
+
+
+#####################
+#subset
+Qiagen<-richness.df[(richness.df$extraction.kit=="Qiagen"),]
+Mag.Max<-richness.df[(richness.df$extraction.kit=="MagMax"),]
+Mag.Max<-na.omit(Mag.Max)
+
+
+#Qiagen, dissection vs. not
+p1<-ggplot(data=Qiagen, 
+          aes(x=processing, y=richness, fill=species)) +
+  geom_bar(stat="identity", position=position_dodge())
+p1
+
+
+#MagMax, dissection vs. not
+p2<-ggplot(data=Mag.Max, 
+          aes(x=processing, y=richness, fill=species)) +
+  geom_bar(stat="identity", position=position_dodge())
+p2
+
+#kits, by species
+p3<-ggplot(data=richness.df,
+          aes(x=extraction.kit, y=richness, fill=species)) +
+  geom_bar(stat="identity", position=position_dodge())
+p3
+
+#all data
+MM<-ggplot(Mag.Max,
+       aes(x=number.of.individuals, y=richness, shape=processing, color=species)) + 
+  geom_point(size=3)+
+  geom_smooth(method=lm, se=FALSE, aes(color=species)) + ggtitle("MagMax")
+
+Qi<-ggplot(Qiagen,
+       aes(x=number.of.individuals, y=richness, shape=processing, color=species)) + 
+  geom_point(size=3)+
+  geom_smooth(method=lm, se=FALSE, aes(color=species))+ ggtitle("Qiagen")
+
+grid.arrange(MM, Qi)
+dev.print(pdf, "figures/16S.comparison.pdf", height=6, width=8)
+dev.off()
+```
+
+
+```{r correspondence analysis}
+#https://urldefense.com/v3/__https://joey711.github.io/phyloseq/plot_ordination-examples.html__;!!Mih3wA!AIU7Db0ibYj2LpvRb0V3wpzdM8ddcRiYxCf5YamaPh4U-SE19Mk4rY9gphEjcDshi-MRezTedBhc9cQHWYgUxHU$  
+
+ps.ca  <- ordinate(ps.rare2, "NMDS", "bray")
+NMDS.taxa <- plot_ordination(ps.rare2, ps.ca, type="taxa", color="Phylum", title="taxa") + geom_point(size=1)
+
+NMDS.location <- plot_ordination(ps.rare2, ps.ca, type="samples", color="location", 
+                                 title="samples - location") + geom_point(size=1)
+
+NMDS.species <- plot_ordination(ps.rare2, ps.ca, type="samples", color="species", 
+                                title="samples - species") + geom_point(size=1)
+
+NMDS.kit <- plot_ordination(ps.rare2, ps.ca, type="samples", color="extraction.kit", 
+                            title="samples - kit") + geom_point(size=1)
+
+NMDS1<-plot_grid(NMDS.location, NMDS.species, NMDS.kit, rel_widths = c(8,8,7), ncol=3)
+NMDS1
+ggsave("figures/NMDS.loc.sp.kit.pdf", height=4, width=12)
+
+
+########
+NMDS.split <- plot_ordination(ps.rare2, ps.ca, type="split", color="Phylum", 
+                             shape="species", label="location",
+                             title="split - species x location and OTU phylum")
+
+NMDS.split
+ggsave("figures/NMDS.split.taxa.pdf", height=7, width=9)
+```
+

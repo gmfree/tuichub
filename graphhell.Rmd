@@ -1,0 +1,1138 @@
+---
+title: "graphhell"
+output: html_document
+date: "2023-04-13"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r loading packages, include=FALSE}
+library(phyloseq)
+library(vegan)
+library(DESeq2)
+library(dendextend) 
+library(viridis) 
+library(cowplot)
+library(gridExtra)
+library(ggpubr)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(RColorBrewer)
+library(pacman)
+pacman::p_load('knitr', 'tidyverse', 'magrittr', 'effects', 'devtools',
+               'stringi', 'dplyr', "ggplot2", "gridExtra", "dada2", "phyloseq", "vegan",
+               "cowplot", "decontam","BiocManager", "dada2", "microbiome")
+pacman::p_load('FedData', 'latticeExtra', 'scales', 'viridis', 'ggmap', 'phyloseq', 'raster', 'rgdal', 'RColorBrewer', 'ggplot2', 'vegan', 'ggplot2', 'phyloseq', 'bipartite', 'plotrix', 'viridis', 'lattice', 'fossil', 'plyr', 'devtools', 'ggpubr', 'gridExtra', 'cowplot')
+pacman::p_load("ade4", "multtest","phyloseq", "car", "igraph", "cowplot", "SpiecEasi", "rhdf5","ggplot2","colorspace","stringi", "geosphere",  "ggmap", "dplyr", "ggbiplot", "graphics", "gridExtra", "geosphere", "sf", "sp", "gstat", "raster", "spData", "tmap", "leaflet", "mapview", "shiny", "fossil", "RgoogleMaps", "plyr", "ggsn", "vegan", "multcomp", "dplyr", "grid", "scales", "gridExtra", "emmeans", "multcompView", "ggpubr", "Rmisc", "purrr", "RVAideMemoire", "RColorBrewer", "vegan")
+
+```
+
+```{r load data}
+taxa<- readRDS("output/taxaTable.rds")
+ps<- readRDS("output/ps.rds")
+ps.fin<- readRDS("output/ps.fin.rds")
+ps.rare<- readRDS("output/ps.rare.rds")
+ps.rare.new<- readRDS("output/ps.rare.new.rds")
+
+ps.rare.sample.df<-read.csv("output/phyloseq_elements/ps.rare.sample.df.csv")
+ps.rare.ASV.df<-read.csv("output/phyloseq_elements/ps.rare.ASV.df.csv")
+ps.rare.tax.df<-read.csv("output/phyloseq_elements/ps.rare.tax.df.csv")
+ps.rare.seq.df<-read.csv("output/phyloseq_elements/ps.rare.seq.df.csv")
+ps.rare.ASV.df.num<-read.csv("output/phyloseq_elements/ps.rare.ASV.df.num.csv")
+
+
+ps.exp<- readRDS("output/ps.exp.rds")
+ps.exp.new<- readRDS("output/ps.exp.new.rds")
+exp.ASV.df<-read.csv("output/phyloseq_elements/exp.ASV.df.csv")
+ps.notexp<- readRDS("output/ps.notexp.rds")
+exp.streams<- readRDS("output/exp.streams.rds")
+exp.lakes<- readRDS("output/exp.lakes.rds")
+sites.streams<- readRDS("output/sites.streams.rds")
+sites.lakes<- readRDS("output/sites.lakes.rds")
+
+```
+
+```{r colors}
+> colors()
+  [1] "white"                "aliceblue"           
+  [3] "antiquewhite"         "antiquewhite1"       
+  [5] "antiquewhite2"        "antiquewhite3"       
+  [7] "antiquewhite4"        "aquamarine"          
+  [9] "aquamarine1"          "aquamarine2"         
+ [11] "aquamarine3"          "aquamarine4"         
+ [13] "azure"                "azure1"              
+ [15] "azure2"               "azure3"              
+ [17] "azure4"               "beige"               
+ [19] "bisque"               "bisque1"             
+ [21] "bisque2"              "bisque3"             
+ [23] "bisque4"              "black"               
+ [25] "blanchedalmond"       "blue"                
+ [27] "blue1"                "blue2"               
+ [29] "blue3"                "blue4"               
+ [31] "blueviolet"           "brown"               
+ [33] "brown1"               "brown2"              
+ [35] "brown3"               "brown4"              
+ [37] "burlywood"            "burlywood1"          
+ [39] "burlywood2"           "burlywood3"          
+ [41] "burlywood4"           "cadetblue"           
+ [43] "cadetblue1"           "cadetblue2"          
+ [45] "cadetblue3"           "cadetblue4"          
+ [47] "chartreuse"           "chartreuse1"         
+ [49] "chartreuse2"          "chartreuse3"         
+ [51] "chartreuse4"          "chocolate"           
+ [53] "chocolate1"           "chocolate2"          
+ [55] "chocolate3"           "chocolate4"          
+ [57] "coral"                "coral1"              
+ [59] "coral2"               "coral3"              
+ [61] "coral4"               "cornflowerblue"      
+ [63] "cornsilk"             "cornsilk1"           
+ [65] "cornsilk2"            "cornsilk3"           
+ [67] "cornsilk4"            "cyan"                
+ [69] "cyan1"                "cyan2"               
+ [71] "cyan3"                "cyan4"               
+ [73] "darkblue"             "darkcyan"            
+ [75] "darkgoldenrod"        "darkgoldenrod1"      
+ [77] "darkgoldenrod2"       "darkgoldenrod3"      
+ [79] "darkgoldenrod4"       "darkgray"            
+ [81] "darkgreen"            "darkgrey"            
+ [83] "darkkhaki"            "darkmagenta"         
+ [85] "darkolivegreen"       "darkolivegreen1"     
+ [87] "darkolivegreen2"      "darkolivegreen3"     
+ [89] "darkolivegreen4"      "darkorange"          
+ [91] "darkorange1"          "darkorange2"         
+ [93] "darkorange3"          "darkorange4"         
+ [95] "darkorchid"           "darkorchid1"         
+ [97] "darkorchid2"          "darkorchid3"         
+ [99] "darkorchid4"          "darkred"             
+[101] "darksalmon"           "darkseagreen"        
+[103] "darkseagreen1"        "darkseagreen2"       
+[105] "darkseagreen3"        "darkseagreen4"       
+[107] "darkslateblue"        "darkslategray"       
+[109] "darkslategray1"       "darkslategray2"      
+[111] "darkslategray3"       "darkslategray4"      
+[113] "darkslategrey"        "darkturquoise"       
+[115] "darkviolet"           "deeppink"            
+[117] "deeppink1"            "deeppink2"           
+[119] "deeppink3"            "deeppink4"           
+[121] "deepskyblue"          "deepskyblue1"        
+[123] "deepskyblue2"         "deepskyblue3"        
+[125] "deepskyblue4"         "dimgray"             
+[127] "dimgrey"              "dodgerblue"          
+[129] "dodgerblue1"          "dodgerblue2"         
+[131] "dodgerblue3"          "dodgerblue4"         
+[133] "firebrick"            "firebrick1"          
+[135] "firebrick2"           "firebrick3"          
+[137] "firebrick4"           "floralwhite"         
+[139] "forestgreen"          "gainsboro"           
+[141] "ghostwhite"           "gold"                
+[143] "gold1"                "gold2"               
+[145] "gold3"                "gold4"               
+[147] "goldenrod"            "goldenrod1"          
+[149] "goldenrod2"           "goldenrod3"          
+[151] "goldenrod4"           "gray"                
+[153] "gray0"                "gray1"               
+[155] "gray2"                "gray3"               
+[157] "gray4"                "gray5"               
+[159] "gray6"                "gray7"               
+[161] "gray8"                "gray9"               
+[163] "gray10"               "gray11"              
+[165] "gray12"               "gray13"              
+[167] "gray14"               "gray15"              
+[169] "gray16"               "gray17"              
+[171] "gray18"               "gray19"              
+[173] "gray20"               "gray21"              
+[175] "gray22"               "gray23"              
+[177] "gray24"               "gray25"              
+[179] "gray26"               "gray27"              
+[181] "gray28"               "gray29"              
+[183] "gray30"               "gray31"              
+[185] "gray32"               "gray33"              
+[187] "gray34"               "gray35"              
+[189] "gray36"               "gray37"              
+[191] "gray38"               "gray39"              
+[193] "gray40"               "gray41"              
+[195] "gray42"               "gray43"              
+[197] "gray44"               "gray45"              
+[199] "gray46"               "gray47"              
+[201] "gray48"               "gray49"              
+[203] "gray50"               "gray51"              
+[205] "gray52"               "gray53"              
+[207] "gray54"               "gray55"              
+[209] "gray56"               "gray57"              
+[211] "gray58"               "gray59"              
+[213] "gray60"               "gray61"              
+[215] "gray62"               "gray63"              
+[217] "gray64"               "gray65"              
+[219] "gray66"               "gray67"              
+[221] "gray68"               "gray69"              
+[223] "gray70"               "gray71"              
+[225] "gray72"               "gray73"              
+[227] "gray74"               "gray75"              
+[229] "gray76"               "gray77"              
+[231] "gray78"               "gray79"              
+[233] "gray80"               "gray81"              
+[235] "gray82"               "gray83"              
+[237] "gray84"               "gray85"              
+[239] "gray86"               "gray87"              
+[241] "gray88"               "gray89"              
+[243] "gray90"               "gray91"              
+[245] "gray92"               "gray93"              
+[247] "gray94"               "gray95"              
+[249] "gray96"               "gray97"              
+[251] "gray98"               "gray99"              
+[253] "gray100"              "green"               
+[255] "green1"               "green2"              
+[257] "green3"               "green4"              
+[259] "greenyellow"          "grey"                
+[261] "grey0"                "grey1"               
+[263] "grey2"                "grey3"               
+[265] "grey4"                "grey5"               
+[267] "grey6"                "grey7"               
+[269] "grey8"                "grey9"               
+[271] "grey10"               "grey11"              
+[273] "grey12"               "grey13"              
+[275] "grey14"               "grey15"              
+[277] "grey16"               "grey17"              
+[279] "grey18"               "grey19"              
+[281] "grey20"               "grey21"              
+[283] "grey22"               "grey23"              
+[285] "grey24"               "grey25"              
+[287] "grey26"               "grey27"              
+[289] "grey28"               "grey29"              
+[291] "grey30"               "grey31"              
+[293] "grey32"               "grey33"              
+[295] "grey34"               "grey35"              
+[297] "grey36"               "grey37"              
+[299] "grey38"               "grey39"              
+[301] "grey40"               "grey41"              
+[303] "grey42"               "grey43"              
+[305] "grey44"               "grey45"              
+[307] "grey46"               "grey47"              
+[309] "grey48"               "grey49"              
+[311] "grey50"               "grey51"              
+[313] "grey52"               "grey53"              
+[315] "grey54"               "grey55"              
+[317] "grey56"               "grey57"              
+[319] "grey58"               "grey59"              
+[321] "grey60"               "grey61"              
+[323] "grey62"               "grey63"              
+[325] "grey64"               "grey65"              
+[327] "grey66"               "grey67"              
+[329] "grey68"               "grey69"              
+[331] "grey70"               "grey71"              
+[333] "grey72"               "grey73"              
+[335] "grey74"               "grey75"              
+[337] "grey76"               "grey77"              
+[339] "grey78"               "grey79"              
+[341] "grey80"               "grey81"              
+[343] "grey82"               "grey83"              
+[345] "grey84"               "grey85"              
+[347] "grey86"               "grey87"              
+[349] "grey88"               "grey89"              
+[351] "grey90"               "grey91"              
+[353] "grey92"               "grey93"              
+[355] "grey94"               "grey95"              
+[357] "grey96"               "grey97"              
+[359] "grey98"               "grey99"              
+[361] "grey100"              "honeydew"            
+[363] "honeydew1"            "honeydew2"           
+[365] "honeydew3"            "honeydew4"           
+[367] "hotpink"              "hotpink1"            
+[369] "hotpink2"             "hotpink3"            
+[371] "hotpink4"             "indianred"           
+[373] "indianred1"           "indianred2"          
+[375] "indianred3"           "indianred4"          
+[377] "ivory"                "ivory1"              
+[379] "ivory2"               "ivory3"              
+[381] "ivory4"               "khaki"               
+[383] "khaki1"               "khaki2"              
+[385] "khaki3"               "khaki4"              
+[387] "lavender"             "lavenderblush"       
+[389] "lavenderblush1"       "lavenderblush2"      
+[391] "lavenderblush3"       "lavenderblush4"      
+[393] "lawngreen"            "lemonchiffon"        
+[395] "lemonchiffon1"        "lemonchiffon2"       
+[397] "lemonchiffon3"        "lemonchiffon4"       
+[399] "lightblue"            "lightblue1"          
+[401] "lightblue2"           "lightblue3"          
+[403] "lightblue4"           "lightcoral"          
+[405] "lightcyan"            "lightcyan1"          
+[407] "lightcyan2"           "lightcyan3"          
+[409] "lightcyan4"           "lightgoldenrod"      
+[411] "lightgoldenrod1"      "lightgoldenrod2"     
+[413] "lightgoldenrod3"      "lightgoldenrod4"     
+[415] "lightgoldenrodyellow" "lightgray"           
+[417] "lightgreen"           "lightgrey"           
+[419] "lightpink"            "lightpink1"          
+[421] "lightpink2"           "lightpink3"          
+[423] "lightpink4"           "lightsalmon"         
+[425] "lightsalmon1"         "lightsalmon2"        
+[427] "lightsalmon3"         "lightsalmon4"        
+[429] "lightseagreen"        "lightskyblue"        
+[431] "lightskyblue1"        "lightskyblue2"       
+[433] "lightskyblue3"        "lightskyblue4"       
+[435] "lightslateblue"       "lightslategray"      
+[437] "lightslategrey"       "lightsteelblue"      
+[439] "lightsteelblue1"      "lightsteelblue2"     
+[441] "lightsteelblue3"      "lightsteelblue4"     
+[443] "lightyellow"          "lightyellow1"        
+[445] "lightyellow2"         "lightyellow3"        
+[447] "lightyellow4"         "limegreen"           
+[449] "linen"                "magenta"             
+[451] "magenta1"             "magenta2"            
+[453] "magenta3"             "magenta4"            
+[455] "maroon"               "maroon1"             
+[457] "maroon2"              "maroon3"             
+[459] "maroon4"              "mediumaquamarine"    
+[461] "mediumblue"           "mediumorchid"        
+[463] "mediumorchid1"        "mediumorchid2"       
+[465] "mediumorchid3"        "mediumorchid4"       
+[467] "mediumpurple"         "mediumpurple1"       
+[469] "mediumpurple2"        "mediumpurple3"       
+[471] "mediumpurple4"        "mediumseagreen"      
+[473] "mediumslateblue"      "mediumspringgreen"   
+[475] "mediumturquoise"      "mediumvioletred"     
+[477] "midnightblue"         "mintcream"           
+[479] "mistyrose"            "mistyrose1"          
+[481] "mistyrose2"           "mistyrose3"          
+[483] "mistyrose4"           "moccasin"            
+[485] "navajowhite"          "navajowhite1"        
+[487] "navajowhite2"         "navajowhite3"        
+[489] "navajowhite4"         "navy"                
+[491] "navyblue"             "oldlace"             
+[493] "olivedrab"            "olivedrab1"          
+[495] "olivedrab2"           "olivedrab3"          
+[497] "olivedrab4"           "orange"              
+[499] "orange1"              "orange2"             
+[501] "orange3"              "orange4"             
+[503] "orangered"            "orangered1"          
+[505] "orangered2"           "orangered3"          
+[507] "orangered4"           "orchid"              
+[509] "orchid1"              "orchid2"             
+[511] "orchid3"              "orchid4"             
+[513] "palegoldenrod"        "palegreen"           
+[515] "palegreen1"           "palegreen2"          
+[517] "palegreen3"           "palegreen4"          
+[519] "paleturquoise"        "paleturquoise1"      
+[521] "paleturquoise2"       "paleturquoise3"      
+[523] "paleturquoise4"       "palevioletred"       
+[525] "palevioletred1"       "palevioletred2"      
+[527] "palevioletred3"       "palevioletred4"      
+[529] "papayawhip"           "peachpuff"           
+[531] "peachpuff1"           "peachpuff2"          
+[533] "peachpuff3"           "peachpuff4"          
+[535] "peru"                 "pink"                
+[537] "pink1"                "pink2"               
+[539] "pink3"                "pink4"               
+[541] "plum"                 "plum1"               
+[543] "plum2"                "plum3"               
+[545] "plum4"                "powderblue"          
+[547] "purple"               "purple1"             
+[549] "purple2"              "purple3"             
+[551] "purple4"              "red"                 
+[553] "red1"                 "red2"                
+[555] "red3"                 "red4"                
+[557] "rosybrown"            "rosybrown1"          
+[559] "rosybrown2"           "rosybrown3"          
+[561] "rosybrown4"           "royalblue"           
+[563] "royalblue1"           "royalblue2"          
+[565] "royalblue3"           "royalblue4"          
+[567] "saddlebrown"          "salmon"              
+[569] "salmon1"              "salmon2"             
+[571] "salmon3"              "salmon4"             
+[573] "sandybrown"           "seagreen"            
+[575] "seagreen1"            "seagreen2"           
+[577] "seagreen3"            "seagreen4"           
+[579] "seashell"             "seashell1"           
+[581] "seashell2"            "seashell3"           
+[583] "seashell4"            "sienna"              
+[585] "sienna1"              "sienna2"             
+[587] "sienna3"              "sienna4"             
+[589] "skyblue"              "skyblue1"            
+[591] "skyblue2"             "skyblue3"            
+[593] "skyblue4"             "slateblue"           
+[595] "slateblue1"           "slateblue2"          
+[597] "slateblue3"           "slateblue4"          
+[599] "slategray"            "slategray1"          
+[601] "slategray2"           "slategray3"          
+[603] "slategray4"           "slategrey"           
+[605] "snow"                 "snow1"               
+[607] "snow2"                "snow3"               
+[609] "snow4"                "springgreen"         
+[611] "springgreen1"         "springgreen2"        
+[613] "springgreen3"         "springgreen4"        
+[615] "steelblue"            "steelblue1"          
+[617] "steelblue2"           "steelblue3"          
+[619] "steelblue4"           "tan"                 
+[621] "tan1"                 "tan2"                
+[623] "tan3"                 "tan4"                
+[625] "thistle"              "thistle1"            
+[627] "thistle2"             "thistle3"            
+[629] "thistle4"             "tomato"              
+[631] "tomato1"              "tomato2"             
+[633] "tomato3"              "tomato4"             
+[635] "turquoise"            "turquoise1"          
+[637] "turquoise2"           "turquoise3"          
+[639] "turquoise4"           "violet"              
+[641] "violetred"            "violetred1"          
+[643] "violetred2"           "violetred3"          
+[645] "violetred4"           "wheat"               
+[647] "wheat1"               "wheat2"              
+[649] "wheat3"               "wheat4"              
+[651] "whitesmoke"           "yellow"              
+[653] "yellow1"              "yellow2"             
+[655] "yellow3"              "yellow4"             
+[657] "yellowgreen" 
+```
+
+```{r color palettes}
+
+"coral"
+colors()
+clrs<- c("aquamarine2", "bisque2", "blue", "blueviolet", "brown", "burlywood4", "cadetblue1", "chartreuse", "chocolate1", "cornflowerblue", "cornsilk1", "cyan", "darkcyan", "darkgoldenrod1", "darkgreen", "darkkhaki", "darkmagenta", "darkolivegreen3", "darkorange2", "darkorchid1", "darkred", "darksalmon", "darkseagreen", "darkslateblue", "darkslategray4", "darkturquoise", "darkviolet", "deeppink", "deepskyblue", "dimgray", "dodgerblue", "firebrick", "forestgreen", "gainsboro", "gold", "goldenrod", "green", "greenyellow", "honeydew2", "hotpink", "indianred", "khaki", "lavender", "lavenderblush2", "lawngreen", "lemonchiffon", "lightblue", "lightcyan", "lightgoldenrod", "lightgray", "lightgreen", "lightgrey", "lightpink", "lightsalmon", "lightseagreen", "lightskyblue", "lightslateblue", "lightslategray", "lightyellow", "limegreen", "linen", )
+
+clrs1<- c("lightpink", "#FB8072", "#D95F02", "#E6AB02", "#FDB462", "peachpuff", "#FFFFB3", "#FFED6F", "lightgoldenrod", "#B3DE69", "#66A61E", "#CCEBC5", "#8DD3C7", "#1B9E77", "turquoise4", "slategray2", "cornflowerblue", "#80B1D3", "#BEBADA", "#7570B3", "plum", "#BC80BD","maroon", "#FCCDE5",  "#D9D9D9", "#666666")
+
+clrs2<- c("lightpink", "#FB8072", "#D95F02", "#FDB462", "peachpuff", "#FFFFB3", "#FFED6F", "#B3DE69", "#CCEBC5", "#8DD3C7", "#1B9E77", "turquoise4", "#80B1D3", "#BEBADA", "#7570B3", "plum", "#BC80BD","maroon", "#FCCDE5",  "#D9D9D9", "#666666", "slategray2")
+
+clrs3<- c("lightpink", "#FB8072", "#D95F02", "#E6AB02", "#FDB462", "peachpuff", "#FFFFB3", "#FFED6F", "lightgoldenrod", "#B3DE69", "#66A61E", "#CCEBC5", "#8DD3C7", "#1B9E77", "turquoise4", "slategray2", "cornflowerblue", "#80B1D3", "#BEBADA", "#7570B3", "plum", "#BC80BD","maroon", "#FCCDE5",  "#D9D9D9", "#666666")
+
+
+```
+
+
+
+```{r phyla data}
+##PHYLA
+phyla_counts_tab <- otu_table(tax_glom(ps.rare.new, taxrank="Phylum")) 
+phyla_tax_vec <- as.vector(tax_table(tax_glom(ps.rare.new, taxrank="Phylum"))[,"Phylum"]) 
+colnames(phyla_counts_tab) <- as.vector(phyla_tax_vec)
+# making a relative abundance df at the phylum level 
+phylum_proportions <- apply(phyla_counts_tab, 1, function(x) x/sum(x))
+phylum_proportions <- as.data.frame(phylum_proportions) # making df
+phylum_proportions$Phyla <- row.names(phylum_proportions) # column of phyla
+# making data long - sample column, phyla column, relative abundance column 
+phylum_prop_long <- phylum_proportions %>% 
+  pivot_longer(cols = colnames(phylum_proportions[,1:83]), 
+               names_to = "id", 
+               values_to = "rel_abund")
+# ordering by sample ID 
+phylum_prop_long <- phylum_prop_long[order(phylum_prop_long$id),] 
+# now we have long df with each sample and the rel abundance of phyla
+```
+  
+```{r phyla md}
+# manipulating metadata file: 
+metadata_final = data.frame (sample_data(ps.rare.new))
+class(metadata_final$mesocosm)
+mesocosm <- as.character(metadata_final$mesocosm)
+class(mesocosm)
+metadata_final$mesocosm <- mesocosm
+comp.metadata <- as.data.frame(metadata_final[, c("id", "location", "loc_type", "mesocosm")])
+
+# merging metadata with phyla df 
+phyla_comp <-  inner_join(phylum_prop_long, comp.metadata, by = "id")
+```
+
+```{r scratch}
+phyla_comp_ne <-  inner_join(phylum_prop_long, notexp, by = "id")
+
+
+pne <- ggplot(phyla_comp_ne, aes(fill=Phyla, y=rel_abund, x=location)) + 
+    geom_bar(position="fill", stat="identity")
+pne + facet_wrap(facets = vars(loc_type))
+
+lake <- ps.notexp@sam_data[ps.notexp@sam_data$loc_type %in% c('lake'),]
+
+phyla_comp_ne$class2 <- reorder(phyla_comp_ne$loc_type, mpg$location)
+
+base <- mutate(id = ifelse(phyla_comp_ne$id, yes))+
+  ggplot(phyla_comp_ne, aes(fill=Phyla, y=rel_abund, x=id)) + 
+    geom_bar(position="fill", stat="identity") +
+  
+  facet_grid(rows=vars(location), cols=vars(loc_type), drop = TRUE)
+base
+
+
+
+rel_abund <- phyla_comp_ne$rel_abund
+fill <- phyla_comp_ne$Phyla
+
+base <-  ggplot(phyla_comp_ne, aes(fill=Phyla, y=rel_abund, x=id, na.rm = TRUE)) + 
+    geom_bar(position="fill", stat="identity", na.rm = TRUE) 
+base
+
+bfg <- base + facet_grid(
+  rows = vars(phyla_comp_ne$loc_type), cols = vars(phyla_comp_ne$location),
+  scales = "free")
+bfg  
+ 
+
+w <- bfg + facet_wrap(vars(phyla_comp_ne$loc_type, phyla_comp_ne$location), scales = "free", ncol=5) +
+  geom_col() + 
+  theme_classic() + 
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities by Site")
+w
+
+
+
+
+
+z <- ggplotGrob(bfg)
+gtable_show_layout(z)
+
+
+unbase <- 
+  ggplot(phyla_comp_ne, aes(fill=Phyla, y=rel_abund, x=id)) + 
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(location, Phyla) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+    geom_bar(position="fill", stat="identity", na.rm = TRUE) +
+  facet_wrap(loc_type~location, ncol = 5)
+
+unbase
+
+
+base + facet_grid(cols = vars(location))
+```
+
+```{r stacked bar plots by site}
+
+phyla_location <- phyla_comp %>% 
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = 100*mean(rel_abund)) %>% 
+  ggplot(aes(x=location, y=mean_rel_abund, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(10, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities by Site (Raw Data)")
+phyla_location
+ggsave("figures/", width = 14, height = 5)
+
+
+
+Phyla <- phyla_comp$Phyla
+
+class(phyla_comp$location)
+
+
+
+
+
+# seeing maximum mean relative abundance of each phyla in above/below groups 
+phyla_mean_rel_abund <- phyla_comp %>%  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = 100*mean(rel_abund))
+phyla_mean_rel_abund
+
+max.phyla <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(max(mean_rel_abund)) 
+max.phyla <- max.phyla[order(max.phyla$'max(mean_rel_abund)'), decreasing = TRUE]
+max.phyla
+
+
+# pooling everything over 5% using a logical 
+phyla_pool <- phyla_mean_rel_abund %>% 
+  group_by(Phyla) %>% 
+  summarize(pool = max(mean_rel_abund) < 5, 
+            mean = mean(mean_rel_abund)) # this creates a logical of if a phyla meets the condition (is less than 5%)
+
+
+# join with df and plot! 
+sites_phyla <- inner_join(phyla_mean_rel_abund, phyla_pool, by = "Phyla") %>%
+  mutate(Phyla = if_else(pool, "Other", Phyla)) %>%
+  group_by(location, Phyla) %>% 
+  summarize(mean_rel_abund = sum(mean_rel_abund),
+            mean = sum(mean)) %>% 
+  mutate(Phyla = factor(Phyla), 
+         Phyla = fct_reorder(Phyla, mean, .desc = TRUE), 
+         Phyla = fct_shift(Phyla, n=1)) %>%
+  ggplot(aes(x=id, y=mean_rel_abund, fill=Phyla)) + 
+  geom_col() + 
+  theme_classic() + 
+  scale_fill_manual(name = NULL, 
+                    breaks = c("Other", "Firmicutes", "Proteobacteria", "Fusobacteriota", "Cyanobacteria", "Actinobacteriota", "Spirochaetota", "Bacteroidota", "Planctomycetota", "Chloroflexi", "Verrucomicrobiota"), 
+                    values = c(clrs1)) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  ggtitle("Phylum Composition of Bacterial Communities by Site")
+
+sites_phyla + facet_grid()
+
+ggsave("figures/phyla_comp_condensed.tiff", height = 5, width = 12)
+```
+  
+```{r base2}
+phyla_comp_ne <-  inner_join(phylum_prop_long, notexp, by = "id")
+
+base2 <-  ggplot(phyla_comp_ne, aes(fill=Phyla, y=rel_abund, x=id, na.rm = TRUE))+
+  geom_bar(position="fill", stat="identity", na.rm = TRUE) +
+  geom_col() + 
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  theme(axis.text.x=element_text(angle = 90))+
+  ggtitle("Phylum Composition of Bacterial Communities by Site")
+
+base2
+
+
+
+bfg2 <- base2 +
+  facet_wrap(vars(phyla_comp_ne$loc_type, phyla_comp_ne$location), scales = "free", ncol=5)+
+  facet_grid(
+  rows = vars(phyla_comp_ne$loc_type), cols = vars(phyla_comp_ne$location),
+  scales = "free") 
+bfg2  
+ 
+bfg3 <- base2 +
+  facet_grid(
+  rows = vars(phyla_comp_ne$loc_type), cols = vars(phyla_comp_ne$location),
+  scales = "free") +
+  facet_wrap(vars(phyla_comp_ne$loc_type, phyla_comp_ne$location), scales = "free", ncol=5)
+bfg3  
+
+
+
+ggsave("figures/graphhell/rough_samplesbysite.tiff", width = 14, height = 7)
+```
+
+```{r base3}
+
+
+notexp <- comp.metadata[comp.metadata$location %in% c('Layton Springs', 'Twin Lakes', 'June Lake', 'Hot Creek', 'Twin Lakes BP', 'McNally Canal', 'Warm Lake', 'Crowley Lake', 'Owens River', 'Mammoth Creek', 'Layton Springs ', 'Twin Lakes '),]
+phyla_comp_ne <-  inner_join(phylum_prop_long, notexp, by = "id")
+
+
+
+base3 <- ggplot(phyla_comp_ne, aes(fill=Phyla, y=rel_abund, x=id, na.rm = TRUE))+
+  geom_bar(position="fill", stat="identity", na.rm = TRUE) +
+  geom_col() + 
+  scale_fill_manual(name = NULL, 
+                    values = c(clrs1)) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  theme(axis.text.x=element_text(angle = 90))+
+  guides(fill=guide_legend(ncol =1))+
+  ggtitle("Phylum Composition of Bacterial Communities by Site")
+
+base3
+
+
+
+, 
+                    breaks = c( "Actinobacteriota", "Bacteroidota", "Chloroflexi", "Cyanobacteria", "Desulfobacterota", "Euryarchaeota", "Firmicutes", "Fusobacteriota", "Halobacterota", "Planctomycetota", "Proteobacteria", "Spirochaetota", "Verrucomicrobiota")
+
+
+
+
+
+bfg222 <- base3 +
+  facet_wrap(vars(phyla_comp_ne$loc_type, phyla_comp_ne$location), scales = "free", ncol=5)+
+  facet_grid(
+  rows = vars(phyla_comp_ne$loc_type), cols = vars(phyla_comp_ne$location),
+  scales = "free") 
+bfg222  
+ 
+bfg333 <- base3 +
+  facet_grid(
+  rows = vars(phyla_comp_ne$loc_type), cols = vars(phyla_comp_ne$location),
+  scales = "free") +
+  facet_wrap(vars(phyla_comp_ne$loc_type, phyla_comp_ne$location), scales = "free", ncol=5)
+
+bfg333  
+
+ggsave("figures/graphhell/rough_samplesbysite5.tiff", width = 14, height = 7)
+
+```
+
+
+```{r population vs mesocosm metadata edit}
+
+sam_data_exp <- ps.exp@sam_data
+write.csv(sam_data_exp, "data/sam_data_exp.csv")
+
+sam_data_exp<-read.csv("data/sam_data_exp.csv")
+sample_names(sam_data_exp)
+rownames(sam_data_exp) <- sam_data_exp$id
+ps.exp.new <-phyloseq(otu_table(ps.exp@otu_table, taxa_are_rows=FALSE),
+              sample_data(sam_data_exp), 
+              tax_table(ps.exp@tax_table))
+
+
+saveRDS(ps.exp.new, file="output/ps.exp.new.rds")
+```
+
+```{r reconfigure ps.exp.new into df}
+pen.otu <- otu_table(tax_glom(ps.exp.new, taxrank="Phylum")) 
+pen.tax <- as.vector(tax_table(tax_glom(ps.exp.new, taxrank="Phylum"))[,"Phylum"]) 
+colnames(pen.otu) <- as.vector(pen.tax)
+# making a relative abundance df at the phylum level 
+pen.df <- apply(pen.otu, 1, function(x) x/sum(x))
+pen.df <- as.data.frame(pen.df) # making df
+pen.df$Phyla <- row.names(pen.df) # column of phyla
+# making data long - sample column, phyla column, relative abundance column 
+pen_prop_long <- pen.df %>% 
+  pivot_longer(cols = colnames(pen.df[,1:40]), 
+               names_to = "id", 
+               values_to = "rel_abund")
+# ordering by sample ID 
+pen_prop_long <- pen_prop_long[order(pen_prop_long$id),] 
+# now we have long df with each sample and the rel abundance of phyla
+
+
+# manipulating metadata file: 
+pen.md = data.frame (sample_data(ps.exp.new))
+class(pen.md$mesocosm)
+mesocosm <- as.character(pen.md$mesocosm)
+class(mesocosm)
+pen.md$mesocosm <- mesocosm
+comp.pen.md <- as.data.frame(pen.md[, c("id", "location", "loc_type", "treatment", "population", "mesocosm")])
+
+# merging metadata with phyla df 
+phyla.pen <-  inner_join(pen_prop_long, comp.pen.md, by = "id")
+```
+
+```{r pop v meso stacked bar}
+base.phyla.pen <- ggplot(phyla.pen, aes(fill=Phyla, y=rel_abund, x=id, na.rm = TRUE))+
+  geom_bar(position="fill", stat="identity", na.rm = TRUE) +
+  geom_col() + 
+  scale_fill_manual(name = NULL, 
+                    values = c(clrs1)) +
+  labs(y = "Mean Relative Abundance (%)", x=NULL) + 
+  theme(legend.text = element_text(face = "italic"), 
+        legend.key.size = unit(12, "pt")) +
+  theme(axis.text.x=element_text(angle = 90))+
+  guides(fill=guide_legend(ncol =1))+
+  ggtitle("Phylum Composition of Bacterial Communities, 
+          Experimental Habitat Type vs. Original Habitat Type")
+
+base.phyla.pen
+
+ 
+phyla.pen.fw <- base.phyla.pen +
+  facet_grid(rows = vars(phyla.pen$loc_type), cols = vars(phyla.pen$treatment),
+  scales = "free") +
+  facet_wrap(vars(phyla.pen$loc_type, phyla.pen$treatment), scales = "free") 
+phyla.pen.fw 
+ggsave("figures/graphhell/phyla.pen.fw.tiff", width = 14, height = 7)
+
+
+
+phyla.pen.fg <- base.phyla.pen +
+  facet_wrap(vars(phyla.pen$loc_type, phyla.pen$treatment), scales = "free")+
+  facet_grid(rows =vars(phyla.pen$loc_type), cols = vars(phyla.pen$treatment),
+  scales = "free") 
+phyla.pen.fg 
+ggsave("figures/graphhell/phyla.pen.fg.tiff", width = 14, height = 7)
+
+```
+
+
+```{r PERMANOVA}
+
+### Phyloseq ###
+########################## NMDS
+
+
+exp.ASV.df<-data.frame(otu_table(ps.exp.new))
+exp.ASV.df[1:1410] <- lapply(exp.ASV.df[1:1410], as.numeric)
+class(exp.ASV.df$X)
+class(exp.ASV.df$ASV1)
+write.csv(exp.ASV.df, "output/phyloseq_elements/exp.ASV.df.csv")
+
+class(exp.ASV.df)
+
+
+exp.df = data.frame (sample_data(ps.exp.new))
+class(exp.df$loc_type)
+class(exp.df$location)
+exp.df$loc_type <- as.factor(exp.df$loc_type)
+exp.df$location <- as.factor(exp.df$location)
+exp.df$mesocosm <- as.factor(exp.df$mesocosm)
+exp.df$treatment <- as.factor(exp.df$treatment)
+exp.df$population <- as.factor(exp.df$population)
+
+# Bray Curtis distance matrix
+bc_dist_exp = as.matrix((vegdist(exp.ASV.df, "bray"))) 
+
+# Bray PERMANOVA 
+bc.adonis.exp <- adonis2(bc_dist_exp~loc_type*treatment, data=exp.df, permutations = 9999)
+bc.adonis.exp 
+
+dd.exp<-vegdist(bc_dist_exp, method="bray")
+
+mod.beta.treatment.exp<-betadisper(dd.exp, exp.df$treatment) # multivariate dispersions
+aa <- anova(mod.beta.loc_type.exp) 
+aa
+
+
+
+
+
+notexp.ASV.df<-data.frame(otu_table(ps.notexp))
+write.csv(notexp.ASV.df, "output/phyloseq_elements/notexp.ASV.df.csv")
+notexp.df = data.frame (sample_data(ps.notexp))
+notexp.df$loc_type <- as.factor(notexp.df$loc_type)
+notexp.df$location <- as.factor(notexp.df$location)
+notexp.df$mesocosm <- as.factor(notexp.df$mesocosm)
+
+
+# Bray Curtis distance matrix
+bc_dist_notexp = as.matrix((vegdist(notexp.ASV.df, "bray"))) 
+
+# Bray PERMANOVA 
+bc.adonis.notexp <- adonis2(bc_dist_notexp~loc_type*location, data=notexp.df, permutations = 9999)
+bc.adonis.notexp # site, year effect
+
+
+dd.notexp<-vegdist(bc_dist_notexp, method="bray")
+
+######## test for beta dispersion by YEAR
+mod.beta.site<-betadisper(dd.notexp, notexp.df$location) # multivariate dispersions
+##Error in x - c : non-conformable arrays
+aa.notexp <- anova(mod.beta.loc_type.notexp) # not significant by YEAR  (equal dispersion)
+aa.notexp
+
+
+plot(mod.beta.site)
+
+
+
+
+
+
+
+
+
+#####################^^^^^^^^^^^^^^^^^^^^^^^
+plot(mod.beta.loc_type.notexp, )
+
+
+
+plot(mod.beta.treatment.exp)
+dev.copy(pdf, "figures/graphhell/mod.beta.loc_type.exp.pdf", height=8, width=10)
+dev.off()
+boxplot(mod.beta.sites)
+dev.copy(pdf, "figures/graphhell/mod.beta.sites.pdf", height=4, width=5)
+dev.off()
+
+
+
+
+#specify path to save PDF to
+destination = 'figures/mod.beta.loc_type.3.pdf'
+
+#open PDF
+pdf(file=destination)
+
+plot(mod.beta.loc_type)
+plot(mod.beta.loc_type.exp) 
+plot(mod.beta.loc_type.notexp)
+#save plots to PDF
+for (i in 1:3) {plot(mod.beta.loc_type) + plot(mod.beta.loc_type.exp) + plot(mod.beta.loc_type.notexp)}
+
+#turn off PDF plotting
+dev.off() 
+
+
+
+
+### test for beta dispersion by SITE
+mod.beta.loc_type<-betadisper(dd, ps.rare.sample.df$loc_type) # multivariate dispersions
+anova(mod.beta.loc_type) # significant by site  (unequal dispersion)
+#  reject null hypothesis that the groups have equal dispersion
+
+plot(mod.beta.loc_type)
+dev.copy(pdf, "figures/mod.beta.loc_type.plot.pdf", height=5, width=6)
+dev.off()
+boxplot(mod.beta.loc_type)
+dev.copy(pdf, "figures/mod.beta.loc_type.pdf", height=5, width=6)
+dev.off()
+```
+
+
+
+```{r alpha diversity edited}
+sort(rowSums(otu_table(ps.rare.new))) #reads
+rich<-estimate_richness(ps.rare.new, split = TRUE, measures = NULL)
+
+# plot it
+alpha.diversity<-plot_richness(ps.rare.new, x="loc_type", measures=c("Observed", "Shannon", "Simpson"))
+
+boxplot.richness<- alpha.diversity + 
+  geom_boxplot(data = alpha.diversity$data, aes(x = loc_type, y = value, fill=loc_type), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(4, "BrBG")) +
+  ggtitle("Alpha Diversity of Sites and Experimental Mesocosms by Habitat Type") +
+  theme_classic()   
+
+boxplot.richness
+dev.copy(pdf, "figures/graphhell/boxplot.alpha.pdf", height=5, width=7)
+dev.off() 
+
+
+
+##exp, treatment, population
+
+sort(rowSums(otu_table(ps.exp.new))) #reads
+rich.exp<-estimate_richness(ps.exp.new, split = TRUE, measures = NULL)
+
+# plot it
+alpha.diversity.exp<-plot_richness(ps.exp.new, x="population", measures=c("Shannon"))
+
+boxplot.richness.exp<- alpha.diversity.exp + 
+  geom_boxplot(data = alpha.diversity.exp$data, aes(x = population, y = value, fill=loc_type), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(12, "Set3")) +
+  ggtitle("Alpha Diversity of Experimental Mesocosms by Habitat Type") +
+  theme_classic()   
+boxplot.richness.exp
+
+dev.copy(pdf, "figures/graphhell/boxplot.alpha.exp.loc_type.population.pdf", height=5, width=7)
+dev.off() 
+
+
+
+
+facet_grid()
+
+ad.exp<-plot_richness(ps.exp.new, x="loc_type", measures=c("Shannon"))
+
+ad.exp.base<- ad.exp + 
+  geom_boxplot(data = exp.df$data, aes(x = loc_type, y = value), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(12, "Set3")) +
+  theme_classic()   
+
+ad.exp.base
+ggsave("figures/graphhell/ad.exp.base.tiff", width = 14, height = 7)
+
+ad.exp.fw <- ad.exp.base +
+  facet_wrap(vars(exp.df$treatment), scales = "fixed") 
+ad.exp.fw 
+ggsave("figures/graphhell/ad.exp.fw.tiff", width = 14, height = 7)
+
+
+
+ad.exp.fg <-  ad.exp.base +
+  facet_grid(rows =vars(exp.df$treatment),  scales = "fixed") 
+ad.exp.fg 
+ggsave("figures/graphhell/ad.exp.fg.tiff", width = 14, height = 7)
+
+
+
+
+
+
+
+
+##notexp by site
+
+
+sort(rowSums(otu_table(ps.notexp))) #reads
+rich.notexp<-estimate_richness(ps.notexp, split = TRUE, measures = NULL)
+
+# plot it
+alpha.diversity.notexp<-plot_richness(ps.notexp, x="location", measures=c("Shannon"))
+
+boxplot.richness.notexp <- alpha.diversity.notexp + 
+  geom_boxplot(data = alpha.diversity.notexp$data, aes(x = loc_type, y = value), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(12, "Set3")) +
+  theme_classic()   
+boxplot.richness.notexp
+
+dev.copy(pdf, "figures/graphhell/boxplot.alpha.notexp.2.pdf", height=5, width=12)
+dev.off() 
+
+
+
+
+
+notexp.df = data.frame (sample_data(ps.notexp))
+
+
+alpha.diversity.notexp<-plot_richness(ps.notexp, x="location", measures=c("Shannon"))
+
+ad.notexp.LT <- alpha.diversity.notexp + facet_wrap(vars(notexp.df$loc_type))
+ad.notexp.LT
+
+
+ad.sites.lakes<-plot_richness(sites.lakes, x="location", measures=c("Shannon"))
+ad.sites.streams<-plot_richness(sites.streams, x="location", measures=c("Shannon"))
+ad.sites.lakes
+ad.sites.streams
+
+
+boxplot.sites.lakes <- ad.sites.lakes + 
+  geom_boxplot(data = ad.sites.lakes$data, aes(x = location, y = value), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(12, "Set3")) +
+  theme_classic()+
+  labs(y = "Alpha Diversity Measure", x=NULL) +
+  ggtitle("Lake Sites")
+boxplot.sites.lakes
+
+
+boxplot.sites.streams <- ad.sites.streams + 
+  geom_boxplot(data = ad.sites.streams$data, aes(x = location, y = value), alpha = 0.7) +
+  scale_fill_manual(values = brewer.pal(12, "Set3")) +
+  theme_classic()  +
+  labs(y = "Alpha Diversity Measure", x=NULL) +
+  ggtitle("Stream Sites") 
+boxplot.sites.streams
+
+
+
+figure <- ggarrange(boxplot.sites.lakes, boxplot.sites.streams,
+                    ncol = 2, nrow = 1)
+figure
+ggsave("figures/graphhell/boxplot.sites.LT.tiff", width = 14, height = 7)
+
+
+
+
+labels = c("Lake Sites", "Stream Sites")
+
+
+
+##save all 3 plots to one pdf##
+
+#specify path to save PDF to
+destination = 'figures/graphhell/boxplot.alpha.3.pdf'
+#open PDF
+pdf(file=destination)
+
+plot(boxplot.richness)
+plot(boxplot.richness.exp) 
+plot(boxplot.richness.notexp)
+
+#turn off PDF plotting
+dev.off() 
+
+```
+
+
+
+```{r plots and analysis edited}
+
+###non experimental mesocosm samples, site samples###
+notexp.ASV <- ps.rare.ASV.df.num[ps.rare.ASV.df.num$X %in% c('10', '11', '12', '122', '123', '124', '125', '129', '130', '132', '133', '135', '136', '137', '15', '152', '153','17','18','202','204','21','247','248','261','297','3','31','32','36','382','39','410','44','47','49','6','74','78','8','81','9','90'),]
+
+bc_dist_notexp = as.matrix((vegdist(notexp.ASV.df, "bray"))) 
+
+NMDS_ne = metaMDS(bc_dist_notexp, k=3, trymax=100)
+NMDS1_ne=NMDS_ne$points[,1]
+NMDS2_ne=NMDS_ne$points[,2]
+NMDS.plot.df.ne=data.frame(NMDS1_ne=NMDS1_ne,NMDS2_ne=NMDS2_ne, 
+                        location=notexp.df$location,
+                        id=notexp.df$id,
+                        loc_type=notexp.df$loc_type)
+
+loc_type.ne.group<-NMDS.plot.df.ne$loc_type
+location.ne.group<-NMDS.plot.df.ne$location
+loc_type.col<-c("coral","mediumseagreen","goldenrod","dodgerblue")
+
+# make colors for sites
+library(RColorBrewer)
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+col_vector2 = unlist(mapply(brewer.pal(12, name = 'Set3')))
+
+Set3colpals = brewer.pal.info[brewer.pal.info$name == 'Set3']
+Set3vector = unlist(mapply(brewer.pal, Set3colpals$maxcolors, rownames(Set3colpals)))
+
+new.colors =  c("#E41A1C", "#377EB8", "#4DAF4A" ,"#984EA3" ,"#FF7F00" , "#A65628", "#1B9E77", "#F781BF", "#999999")
+
+### make plot by habitat with vectors for environment
+ordiplot(NMDS_ne, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.6, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS_ne, "sites", cex=0.8, pch=16, col=id.col[loc_type.ne.group])
+ordiellipse(NMDS_ne, groups=loc_type.ne.group, kind="sd", draw="polygon", border=loc_type.col, conf=0.95, alpha=30)
+legend("top", legend=levels(loc_type.ne.group), cex=1, col=loc_type.col, pch=16, pt.cex=1, bty="n")
+
+dev.copy(pdf, "figures/graphhell/NMDS_ne.loc_type.pdf", height=6, width=7)
+dev.off() 
+
+
+######### by sites
+ordiplot(NMDS_ne, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.8, 0.8))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS_ne, "sites", cex=0.8, pch=17, col=new.colors[location.ne.group])
+ordiellipse(NMDS_ne, groups=location.ne.group, kind="sd", draw="polygon", 
+            border= new.colors, conf=0.95, alpha=30)
+legend(x=0.5, y=0.6, legend=levels(location.ne.group), cex=0.75, col=new.colors, pch=17, pt.cex=0.8, bty="n", 
+       inset=c(0.4,0.05), x.intersp = 1.2, y.intersp = 0.6)
+
+dev.copy(pdf, "figures/graphhell/NMDS.ne.location.colors.pdf", height=7, width=8)
+dev.off()
+
+
+
+
+
+###experimental mesocosms###
+
+bc_dist_exp = as.matrix((vegdist(exp.ASV, "bray"))) 
+
+NMDS.e = metaMDS(bc_dist_exp, k=3, trymax=100)
+NMDS1.e=NMDS.e$points[,1]
+NMDS2.e=NMDS.e$points[,2]
+NMDS.plot.df.e=data.frame(NMDS1.e=NMDS1.e,NMDS2.e=NMDS2.e, 
+                        location=exp.df$location,
+                        loc_type=exp.df$loc_type)
+
+loc_type.e.group<-NMDS.plot.df.e$loc_type
+location.e.group<-NMDS.plot.df.e$location
+loc_type.col<-c("coral","mediumseagreen","goldenrod","dodgerblue")
+
+# make colors for sites
+library(RColorBrewer)
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+
+
+### make plot by habitat with vectors for environment
+ordiplot(NMDS.e, type="n", main=substitute(paste("")), cex.main=1, display="sites", 
+                    cex.lab=0.8, cex.axis=0.8, ylim=c(-0.3, 0.3))
+abline(h = 0, lty = "dotted")
+abline(v = 0, lty = "dotted")
+points(NMDS.e, "sites", cex=0.8, pch=16, col=loc_type.col[loc_type.e.group])
+ordiellipse(NMDS.e, groups=loc_type.e.group, kind="sd", draw="polygon", border=loc_type.col, conf=0.95, alpha=30)
+legend("top", legend=levels(loc_type.e.group), cex=1, col=loc_type.col, pch=16, pt.cex=1, bty="n")
+
+dev.copy(pdf, "figures/graphhell/NMDS.e.loc_type.pdf", height=6, width=7)
+dev.off() 
+
+```
+
+
+
+
+
+```{r }
+
+```
+
+
+
+
+
+
+
+

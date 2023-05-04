@@ -1,0 +1,417 @@
+---
+title: "trout_2021_analyses"
+output: pdf_document
+date: '2022-09-01'
+author: 'Josh Dominguez'
+---
+Preliminary analyses of trout samples from 2021 
+
+# Loading packages
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(phyloseq)
+library(vegan)
+library(DESeq2)
+library(dendextend)
+library(viridis)
+library(cowplot)
+library(gridExtra)
+library(ggpubr)
+library(dplyr)
+```
+
+# Reading in Data - count table, metadata, taxa table 
+
+```{r}
+# clear workspace 
+rm(list = ls())
+
+# importing ASV count table 
+count_table <- read.table("trout_2021ASVs_counts-no-contam.tsv", header=T, row.names=1,
+             check.names=F, sep="\t")
+
+# removing blanks 
+count_table <- count_table[, -c(81:89)]
+str(count_table)
+
+# renaming col names to match metadata - using general expressions
+colnames(count_table) <- gsub(pattern = "_S..", replacement = "", x = colnames(count_table))
+colnames(count_table) <- gsub(pattern = "_S.", replacement = "", x = colnames(count_table))
+
+# loading taxa table: 
+taxa_table <- as.matrix(read.table("trout_2021_ASVs_taxonomy-no-contam.tsv", header=T,
+           row.names=1, check.names=F, sep="\t"))
+str(taxa_table)
+
+# loading metadata: 
+metadata <- read.csv("data/trout_metadata_2021.csv")[-c(4, 79, 83:91),]
+colnames(metadata) <- tolower(colnames(metadata))
+colnames(metadata)[5] <- "basin_lcn"
+
+# changing stuff to factors, numerics, etc. - tried to automate but took way too much damn time 
+# factors
+metadata$date_sampled <- as.factor(metadata$date_sampled)
+metadata$site <- as.factor(metadata$site)
+metadata$basin <- as.factor(metadata$basin)
+metadata$basin_lcn <- as.factor(metadata$basin_lcn)
+
+# numerics
+metadata$wt_g <- as.numeric(metadata$wt_g)
+metadata$length_mm <- as.numeric(metadata$length_mm)
+metadata$tp_ug.l <- as.numeric(metadata$tp_ug.l)
+```
+
+# Filtering taxa using phyloseq object 
+
+```{r}
+count_tab_phy <- otu_table(count_table, taxa_are_rows=T)
+tax_tab_phy <- tax_table(taxa_table)
+
+# fixing problem with metadata
+rownames(metadata) # we can see here the sample names don't correspond to the trout sample IDs 
+
+# need to fix: 
+rownames(metadata) <- metadata$no
+rownames(metadata) # now we can see the correct rownames in the df 
+
+# making phyloseq object with sample data 
+metadata_phy <- sample_data(metadata)
+
+# creating a combined phyloseq object - works now! 
+ASV_physeq <- phyloseq(count_tab_phy, tax_tab_phy, metadata_phy) 
+
+## let's inspect
+df <- as.data.frame(sample_data(ASV_physeq)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(ASV_physeq) # this is the number of reads corresponding to each sample 
+df <- df[order(df$LibrarySize),] # ordering the df by the number of reads from lowest to highest - quite a lot of variation here 
+df$Index <- seq(nrow(df))
+```
+
+# Taxonomic Filtering 
+
+```{r}
+# rank names gives us the phylogenetic ranks for ASVs
+rank_names(ASV_physeq) 
+
+# here we're looking at the phyla present in our taxa, indexing the dataframe by phylum 
+table(tax_tab_phy[, "phylum"], exclude = NULL) # lots of NA 
+table(tax_tab_phy[, "domain"], exclude = NULL) # 1874 bacteria 
+
+# getting rid of NAs and everything not bacteria 
+ASV_physeq <- subset_taxa(ASV_physeq, !is.na(domain) & domain == "Bacteria")
+
+# re-examine table, NAs gone
+table(tax_table(ASV_physeq)[, "domain"], exclude = NULL)
+
+# subset - get rid of Blue lake 
+ASV_physeq <- subset_samples(ASV_physeq, !site == "Blue")
+```
+
+# Need to normalize sampling depth - not with rarefaction though instead using variance stabilization across samples 
+
+```{r}
+# creating deseq object 
+deseq_counts <- DESeqDataSetFromMatrix(count_table, colData = metadata, design = ~no)
+
+# account for many zeros in count data: 
+deseq_counts <- estimateSizeFactors(deseq_counts, type = "poscounts")
+
+# now running transformation: 
+deseq_counts_vst <- varianceStabilizingTransformation(deseq_counts)
+
+# pulling out count table
+vst_trans_count_tab <- assay(deseq_counts_vst)
+
+# Euclidean distance matrix
+euc_dist <- dist(t(vst_trans_count_tab))
+```
+
+# Hierarchical clustering to visual samples 
+```{r}
+euc_clust <- hclust(euc_dist, method="ward.D2")
+
+# hclust objects like this can be plotted with the generic plot() function
+plot(euc_clust) 
+
+# helping visualize by site 
+euc_dend <- as.dendrogram(euc_clust, hang=0.1)
+dend_cols <- as.character(metadata$site[order.dendrogram(euc_dend)])
+labels_colors(euc_dend) <- dend_cols
+
+plot(euc_dend, ylab="VST Euc. dist.")
+
+# exploratory rarefac curve 
+rarecurve(t(count_table), step=100, col=metadata$site, lwd=2, ylab="ASVs", label=F)
+
+  # and adding a vertical line at the fewest seqs in any sample
+abline(v=(min(rowSums(t(count_table)))))
+```
+
+# exploratory richness plot 
+```{r}
+# and now we can call the plot_richness() function on our phyloseq object
+plot_richness(ASV_physeq, color="site", measures=c("Chao1", "Shannon")) + 
+    theme_bw() + theme(legend.title = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+# hard to parse out, lots of variation 
+```
+
+# lets do the same plot but with rarefying our samples 
+
+```{r}
+# first plotting a rarefying curve 
+
+count_table_filt <- as.data.frame(otu_table(ASV_physeq)) # asv table thats filtered down
+rarecurve(t(count_table_filt), step=100, col=metadata$site, lwd=2, ylab="ASVs", label=F)
+abline(v=(min(rowSums(t(count_table_filt))))) # line at min seq depth
+
+# there's some very low sequencing depths here, we need to get rid of them 
+# some good depth (up to 50k)
+
+# looking at the number of reads in a new dataframe (df2) that mirrors the first df we made with our phyloseq object 
+
+df2 <- as.data.frame(sample_data(ASV_physeq)) # Put sample_data into a ggplot-friendly data.frame
+df2$LibrarySize <- sample_sums(ASV_physeq) # this is the number of reads corresponding to each sample 
+df2 <- df2[order(df2$LibrarySize),] # ordering the df by the number of reads from lowest to highest - quite a lot of variation here 
+df2$Index <- seq(nrow(df2))
+
+# looking at LibrarySize before and after getting rid of NAs 
+df$LibrarySize
+sort(rowSums(otu_table(t(ASV_physeq))))
+
+# drastic changes - looks like these random artifacts of NAs that weren't assigned to any domain inflated the number of reads in samples here...no bueno I'm bummed 
+
+#### rarefying data, real concern about what level to rarefy too, may lose 10-12 samples....damn 
+physeq.rare1 <- rarefy_even_depth(ASV_physeq, rngseed=1024)
+sort(rowSums(otu_table(t(physeq.rare1)))) # this is bad, rarefyed to sequencing depth is really no bueno, gotta change this somehow 
+
+# plotting first one 
+plot_richness(physeq.rare1, color="site", measures=c("Chao1", "Shannon")) + 
+    theme_bw() + theme(legend.title = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+# approach - test affects of rarefying data to 1000 vs 1500 vs 2000 reads 
+# end result - we're going to lose samples here, 9 vs 10 vs 11 samples
+
+# 1000 sequencing depth
+physeq.rare1k <- rarefy_even_depth(ASV_physeq, rngseed=1e4, sample.size = 1e3)
+sort(rowSums(otu_table(t(physeq.rare1k))))
+alpha.1k <- plot_richness(physeq.rare1k, color="site", measures=c("Chao1", "Shannon")) + 
+    theme_bw() + theme(legend.title = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+alpha.1k
+# 1k - loses 9 samples and 870 ASVs 
+
+# 1500 sequencing depth 
+physeq.rare1.5k <- rarefy_even_depth(ASV_physeq, rngseed=1e4, sample.size = 1500)
+sort(rowSums(otu_table(t(physeq.rare1.5k))))
+alpha.1.5k <- plot_richness(physeq.rare1.5k, color="site", measures=c("Chao1", "Shannon")) + 
+    theme_bw() + theme(legend.title = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+alpha.1.5k
+# 1.5k - loses 10 samples and 745 ASVs
+
+# 2000 sequencing depth 
+physeq.rare2k <- rarefy_even_depth(ASV_physeq, rngseed=1e4, sample.size = 2000)
+sort(rowSums(otu_table(t(physeq.rare2k))))
+alpha.2k <- plot_richness(physeq.rare2k, color="site", measures=c("Chao1", "Shannon")) + 
+    theme_bw() + theme(legend.title = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+alpha.2k
+# 2k - loses 11 samples and 646 ASVs 
+
+# 3k sequencing depth cutoff 
+physeq.rare3k <- rarefy_even_depth(ASV_physeq, rngseed=1e4, sample.size = 3e3)
+sort(rowSums(otu_table(t(physeq.rare3k))))
+alpha.3k <- plot_richness(physeq.rare2k, color="site", measures=c("Chao1", "Shannon")) + 
+    theme_bw() + theme(legend.title = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+alpha.3k
+
+# 3k cutoff - loses 13 samples and 550 ASVs 
+
+# combining plots together 
+alpha.rarefying <- ggarrange(alpha.1k, alpha.1.5k, alpha.2k, alpha.3k,
+                    labels = c("1K", "1.5K", "2K", "3K"),
+                    ncol = 2, nrow = 2)
+alpha.rarefying
+```
+
+It looks like we'll go with cutting off at 2k reads, loses 11 samples and ~ 650 ASVs, we'll adjust to 2238 ASVs to reflect trout 13 
+
+```{r}
+# histogram plot of number of reads per samples 
+hist(rowSums(otu_table(t(ASV_physeq))))
+
+# rarefying samples to 2238 ASVs 
+physeq.rare <- rarefy_even_depth(ASV_physeq, rngseed=3e3, sample.size = 2238)
+sort(rowSums(otu_table(t(physeq.rare))))
+
+# how does our data change when removing 11 samples? 
+# no of individuals/site 
+table(sample_data(physeq.rare)[, "site"], exclude = NULL)
+
+# quick look at alpha diversity
+alpha.diversity <- plot_richness(physeq.rare, color="site", measures=c("Chao1", "Shannon")) + 
+    theme_bw() + theme(legend.title = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+alpha.diversity # some outliers of very high diversity and very low diversity, need to look at patterns more clearly by site 
+
+# observed with boxplot
+alpha.site <- plot_richness(physeq.rare, x="site", measures=c("Observed")) + 
+  geom_boxplot(aes(fill = "site")) +
+  theme_classic() + 
+  scale_x_discrete(guide = guide_axis(angle = 90)) 
+alpha.site # sooooo much variation wow, outlier of a granite 2 observation 
+
+# shannon boxplot 
+shannon.site <- plot_richness(physeq.rare, x = "site", measures=c("Shannon")) +
+  geom_boxplot(aes(fill = "site")) + 
+  labs(x = NULL) + 
+  theme(legend.position = NULL, 
+        axis.title.x = NULL) + 
+  theme_classic() + 
+  scale_x_discrete(guide = guide_axis(angle = 90)) 
+  
+shannon.site # doesn't seem to be a pattern here by site 
+```
+
+### Doing some multivariate analyses with distance matrices 
+
+# Doin some other analyses in vegan 
+```{r}
+# creating a dataframe from count table in 
+# bray-curtis distance matrix 
+
+# making our filtered ASV count table, metadata, and taxa table
+counts_final <- as.data.frame(otu_table(physeq.rare))
+taxa_final <- as.data.frame(tax_table(physeq.rare))
+metadata_final <- as.data.frame(sample_data(physeq.rare))
+
+# test NMDS to just explore data 
+bray_dist <- as.matrix(vegdist(t(counts_final), method="bray"))
+set.seed(1999)
+test_NMS <- metaMDS(bray_dist,
+          distance = "bray",
+          k = 3,
+          maxit = 999, 
+          trymax = 500,
+          wascores = TRUE)
+
+# making rough plot with ggplot2 
+species.scores <- as.data.frame(scores(test_NMS, display="site"))
+
+nmds.merge <- merge(metadata_final, species.scores, by = 'row.names', all = TRUE)
+
+ggplot(nmds.merge, aes(x=NMDS1, y=NMDS2, color = site) + 
+  geom_point() + 
+  theme_classic()) 
+# by site is kind of a nightmare, lots of variation 
+
+
+# interesting, lets separate by elevation further as a categorical above or below treeline as 2900m 
+
+nmds.merge$elev.cat <- ifelse(nmds.merge$elevation < 2900, "Below", "Above")
+
+treeline.nmds <- ggplot(nmds.merge, aes(x=NMDS1, y=NMDS2, color = elev.cat)) + geom_point() + 
+  theme_classic()
+
+treeline.nmds
+```
+
+# Adonis and Betadisper - how different are groups? PERMANOVA 
+
+# Here to start basic - looking if there's difference between above and below treeline samples 
+# problems: 
+# way more above than below samples, somewhat arbritrary elevation of 2900m 
+```{r}
+# re rarefy and calculate bray curtis matrix using avgdist function - feeding pre rarefied data 
+raw.asv.table <- as.data.frame(otu_table(ASV_physeq))
+raw.metdata <- as.data.frame(sample_data(ASV_physeq))
+raw.taxa <- as.data.frame(tax_table(ASV_physeq))
+
+# avgdist function 
+avg.bray <- avgdist(t(raw.asv.table), sample = 2238, iterations = 1e3)
+
+# nmds below 
+set.seed(1999)
+nmds_2 <- metaMDS(avg.bray,
+          distance = "bray",
+          k = 3,
+          maxit = 999, 
+          trymax = 500,
+          wascores = TRUE)
+species.scores2 <- as.data.frame(scores(nmds_2, display="site"))
+nmds2.merge <- merge(metadata_final, species.scores2, by = 'row.names', all = TRUE)
+nmds2.merge$elev.cat <- as.factor(ifelse(nmds.merge$elevation < 2900, "Below", "Above"))
+
+# adding centroid 
+centroid <- nmds2.merge %>% 
+  group_by(elev.cat) %>%
+  summarize(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+
+# visualization - whole ton of variation here 
+treeline.nmds2 <- ggplot(nmds2.merge, aes(x=NMDS1, y=NMDS2, color = elev.cat))+
+  geom_point() + 
+  stat_ellipse(show.legend = FALSE) +
+  geom_point(data = centroid, size = 5, shape = 21, color = 'black', 
+             aes(fill = elev.cat), show.legend = FALSE) +
+  theme_bw()
+treeline.nmds2
+
+# now we're doing site...could get gnarly 
+site.nmds2 <- ggplot(nmds2.merge, aes(x=NMDS1, y=NMDS2, color = elevation))+
+  geom_point() + 
+  stat_ellipse(show.legend = FALSE) +
+  #geom_point(data = centroid, size = 5, shape = 21, color = 'black', 
+             #aes(fill = elev.cat), show.legend = FALSE) +
+  theme_bw()
+site.nmds2
+
+# question - are the centroids significantly different from each other for above and below treeline? 
+
+# super simple model: 
+model.elevcat1 <- adonis2(avg.bray ~ nmds2.merge$elev.cat)  
+model.elevcat1 # significant differences between groups - encouraging or chasing variation?
+
+# betadispersion 
+bd.elevcat <- betadisper(avg.bray, nmds2.merge$elev.cat)
+anova(bd.elevcat) # no difference in variation between groups - makes sense and good result
+
+# trying by site
+model.site <- adonis2(avg.bray ~ nmds2.merge$site) #extracting p-value 
+model.site # again significant - weird, lets look at betadispersion, maybe its just chasing variation thats in there? 
+
+bd.site <- betadisper(avg.bray, nmds2.merge$site) 
+anova(bd.site) # i think this is a flawed test here 
+```
+
+# integrating site into model 
+```{r}
+set.seed(1999)
+# first model - elevation cat by itself
+mod.1 <- adonis2(avg.bray ~ nmds2.merge$elev.cat)  
+mod.1 
+
+# site as a fixed factor
+mod.2 <- adonis2(avg.bray ~ nmds2.merge$elev.cat + nmds2.merge$site)
+mod.2
+
+# using site as strata (random effect essentially)
+mod.3 <- adonis2(avg.bray ~ nmds2.merge$elev.cat, strata = nmds2.merge$site)
+mod.3
+
+# site (lake) nested within categories 
+
+# basin and lcn as random effects, site as an explanatory variable - makes more sense 
+mod.4 <- adonis2(avg.bray ~ elev.cat, strata = site , data = nmds2.merge)
+mod.4
+# something is wrong here....the p-values are identical between site and elevation, doesn't seem correct, the R2 are different 
+
+# site as an interaction - skeptical here 
+mod.5 <- adonis2(avg.bray ~ elev.cat*site, data = nmds2.merge)
+mod.5
+
+# elevation category - does not explain a lot of variation, although it is significant 
+# site explains more variation and is significant 
+# when accounting for site as strata (I guess the same as a random effect?) we see the significance disappear 
+# maybe site just captures more of the variation because there is more levels? unsure I need to investigate more 
+
+```
+
+# Do a DCA 
